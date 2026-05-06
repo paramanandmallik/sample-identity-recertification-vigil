@@ -150,6 +150,13 @@ Resources:
     Properties:
       BucketName: !Sub 'identity-governance-access-logs-${Stage}-${AWS::AccountId}'
       AccessControl: LogDeliveryWrite
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: COMPLIANCE
+            Days: 90
       VersioningConfiguration:
         Status: Enabled
       BucketEncryption:
@@ -299,6 +306,7 @@ Resources:
     Properties:
       LogGroupName: !Sub '/aws/apigateway/IdentityGovernance-${Stage}'
       RetentionInDays: 90
+      KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/cloudwatch'
       Tags:
         - Key: Project
           Value: IdentityGovernance

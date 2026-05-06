@@ -34,6 +34,7 @@ Success.md
 # Security reports
 security-reports/
 recertify-scan-report.json
+holmes-scan-report.json
 
 # Logs
 *.log

@@ -28,17 +28,12 @@ export const handler = async (event) => {
       return;
     }
 
-    const routes = {
-      INITIAL: () => sendInitialNotifications(cycleId),
-      REMINDER_7D: () => sendReminders(cycleId, 'REMINDER'),
-      REMINDER_12D: () => sendReminders(cycleId, 'URGENT'),
-      ESCALATION_14D: () => sendEscalation(cycleId),
-      REVOCATION_CONFIRMATION: () => sendRevocationConfirmation(event),
-      TRANSFER_NOTIFICATION: () => sendTransferNotification(event),
-    };
-
-    const routeFn = routes[action];
-    if (routeFn) return await routeFn();
+    if (action === 'INITIAL') return await sendInitialNotifications(cycleId);
+    if (action === 'REMINDER_7D') return await sendReminders(cycleId, 'REMINDER');
+    if (action === 'REMINDER_12D') return await sendReminders(cycleId, 'URGENT');
+    if (action === 'ESCALATION_14D') return await sendEscalation(cycleId);
+    if (action === 'REVOCATION_CONFIRMATION') return await sendRevocationConfirmation(event);
+    if (action === 'TRANSFER_NOTIFICATION') return await sendTransferNotification(event);
 
     console.log(JSON.stringify({ action: 'UNKNOWN_ACTION', requestedAction: action, timestamp: toISOString(new Date()) }));
   } catch (error) {

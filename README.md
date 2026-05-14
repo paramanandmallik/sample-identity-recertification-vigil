@@ -184,7 +184,7 @@ aws cognito-idp admin-create-user \
   --user-pool-id <POOL_ID> \
   --username admin@yourcompany.com \
   --user-attributes Name=email,Value=admin@yourcompany.com \
-  --temporary-password "TempPass123!"
+  --temporary-password "Your Temporary Password"
 
 > ⚠️ **Security Note**: The temporary password above is a sample placeholder. In production, use a strong, unique temporary password or omit `--temporary-password` to have Cognito generate one. Users are forced to change the password on first login regardless.
 

@@ -186,6 +186,8 @@ aws cognito-idp admin-create-user \
   --user-attributes Name=email,Value=admin@yourcompany.com \
   --temporary-password "TempPass123!"
 
+> ⚠️ **Security Note**: The temporary password above is a sample placeholder. In production, use a strong, unique temporary password or omit `--temporary-password` to have Cognito generate one. Users are forced to change the password on first login regardless.
+
 # Add to admin group
 aws cognito-idp admin-add-user-to-group \
   --user-pool-id <POOL_ID> \
@@ -300,6 +302,80 @@ This satisfies:
 
 ---
 
+## Disclaimer
+
+This project is provided as a sample implementation for educational and demonstration purposes. It is not intended for production use without additional security review and hardening.
+
+**By deploying this solution, you acknowledge:**
+
+- **Cost Responsibility** — Deploying this solution will incur AWS charges (Lambda invocations, DynamoDB storage, S3 storage with Object Lock, API Gateway requests, SES emails, CloudFront distribution). You are responsible for all costs. Review [AWS Pricing](https://aws.amazon.com/pricing/) and monitor usage via AWS Cost Explorer.
+- **Shared Responsibility** — Security and compliance is a [shared responsibility](https://aws.amazon.com/compliance/shared-responsibility-model/) between AWS and you. This solution provides technical controls but does not guarantee compliance with any regulation. You are responsible for:
+  - Performing your own compliance assessment with legal counsel
+  - Configuring appropriate IAM permissions and network controls
+  - Managing Cognito user lifecycle and access reviews
+  - Validating the solution meets your organization's specific regulatory requirements
+  - Monitoring and responding to security events
+- **No Warranty** — This software is provided "as is" without warranty of any kind. The compliance mappings (MCA, BSA, DPDP, RBI) are provided as guidance only and do not constitute legal advice.
+
+---
+
+## Security Considerations
+
+### IAM Permissions
+- Lambda functions use least-privilege policies scoped to specific resources where possible. Some actions (e.g., `iam:ListUsers`, `tag:GetResources`, `cloudtrail:LookupEvents`) require wildcard resource (`*`) by API design.
+- The cross-account StackSet role (`VIGILCrossAccountRole`) grants revocation permissions across member accounts. Review `stackset-templates/cross-account-role.yaml` and restrict further based on your organization's requirements.
+
+### Data Protection
+- Evidence bucket uses S3 Object Lock in Compliance mode (8-year retention). Objects cannot be deleted or overwritten during the retention period.
+- DynamoDB table uses KMS encryption and Point-in-Time Recovery.
+- All S3 buckets have public access blocked and server-side encryption enabled.
+
+### Network & API Security
+- API Gateway is protected by Cognito Authorizer — all endpoints require valid authentication.
+- CORS is configured with `AllowOrigin: '*'` for development convenience. For production, restrict this to your deployed UI domain.
+
+### Credential Management
+- No credentials are stored in source code. IdP credentials (SCIM tokens) are stored in SSM Parameter Store.
+- Cognito handles all user authentication with strong password policies (12+ characters, mixed case, numbers, symbols).
+
+---
+
+## Cleanup / Teardown
+
+To remove all resources deployed by VIGIL:
+
+```bash
+# 1. Delete the StackSet instances (cross-account roles)
+aws cloudformation delete-stack-instances \
+  --stack-set-name VIGILCrossAccountRole \
+  --deployment-targets OrganizationalUnitIds=<ROOT_OU_ID> \
+  --regions us-east-1 --no-retain-stacks
+
+# 2. Delete the StackSet
+aws cloudformation delete-stack-set --stack-set-name VIGILCrossAccountRole
+
+# 3. Empty the S3 buckets (required before stack deletion)
+#    ⚠️ Evidence bucket has Object Lock — objects cannot be deleted until retention expires
+aws s3 rm s3://identity-governance-ui-dev-<ACCOUNT_ID> --recursive
+aws s3 rm s3://identity-governance-access-logs-dev-<ACCOUNT_ID> --recursive
+
+# 4. Delete the SAM stack
+sam delete --stack-name identity-governance-dev --no-prompts
+
+# 5. Delete the Cognito User Pool (if not needed)
+aws cognito-idp delete-user-pool --user-pool-id <POOL_ID>
+```
+
+> **Note**: The Evidence S3 bucket has `DeletionPolicy: Retain` and Object Lock in Compliance mode. Objects in this bucket **cannot** be deleted until their retention period (8 years) expires. Plan accordingly if you need to fully decommission.
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. If no CONTRIBUTING.md is present, contributions via pull requests are welcome. Please open an issue first to discuss significant changes.
+
+---
+
 ## License
 
-This project is licensed under the MIT-0 License. 
+This project is licensed under the MIT-0 License.

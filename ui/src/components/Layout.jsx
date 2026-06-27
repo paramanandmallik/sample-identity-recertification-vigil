@@ -5,36 +5,19 @@
  * @module components/Layout
  */
 
-import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthProvider.jsx';
 import './Layout.css';
-
-/**
- * Compute the current fiscal quarter cycle ID (e.g. "2026-Q2").
- * @returns {string}
- */
-const getCurrentCycleId = () => {
-  const now = new Date();
-  const q = Math.ceil((now.getMonth() + 1) / 3);
-  return `${now.getFullYear()}-Q${q}`;
-};
 
 /**
  * Layout component with AWS-style global top nav and side navigation.
  */
 const Layout = () => {
   const { user, handleSignOut } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
-
   const isRecertActive = location.pathname.startsWith('/recert');
 
   const NAV_ITEMS = [];
-
-  const handleRecertClick = (e) => {
-    e.preventDefault();
-    navigate(`/recert/${getCurrentCycleId()}`);
-  };
 
   const userLabel = user?.email || user?.username || 'User';
   const groupsLabel = (user?.groups || []).join(', ') || 'No groups';

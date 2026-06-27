@@ -18,13 +18,6 @@ const STATUS_COLORS = {
   ACTIVE: '#0972d3', INITIATING: '#8d6605', COMPLETED: '#037f0c', COMPLETED_WITH_OVERDUE: '#8d6605',
 };
 
-const Stat = ({ label, value, color }) => (
-  <span style={{ display: 'inline-flex', flexDirection: 'column', minWidth: 64 }}>
-    <span style={{ fontSize: 18, fontWeight: 700, color: color || '#16191f' }}>{value ?? 0}</span>
-    <span style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, color: '#5f6b7a' }}>{label}</span>
-  </span>
-);
-
 const CyclesAdmin = () => {
   const [cycles, setCycles] = useState([]);
   const [loading, setLoading] = useState(true);

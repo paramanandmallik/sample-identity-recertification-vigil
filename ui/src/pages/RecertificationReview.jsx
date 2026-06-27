@@ -23,10 +23,6 @@ const SERVICE_LABELS = {
   rds: 'RDS Instances', dynamodb: 'DynamoDB Tables', iam: 'IAM Resources',
   sns: 'SNS Topics', sqs: 'SQS Queues', unknown: 'Other Resources',
 };
-const SERVICE_ICONS = {
-  s3: '🪣', ec2: '🖥️', lambda: 'λ', rds: '🗄️', dynamodb: '📊',
-  iam: '🔑', sns: '📢', sqs: '📬', unknown: '📦',
-};
 
 /** Format date for display */
 const fmtDate = (iso) => {

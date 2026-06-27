@@ -6,8 +6,9 @@
 
 import { S3Connector } from './s3-connector.mjs';
 import { IamConnector } from './iam-connector.mjs';
+import { IamRoleConnector } from './iam-role-connector.mjs';
 
-const CONNECTORS = [S3Connector, IamConnector];
+const CONNECTORS = [S3Connector, IamConnector, IamRoleConnector];
 
 const byType = new Map();
 for (const C of CONNECTORS) {

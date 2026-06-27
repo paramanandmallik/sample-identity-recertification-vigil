@@ -14,6 +14,7 @@ import AccessDetailPanel from '../components/AccessDetailPanel.jsx';
 import UserAccessTable from '../components/UserAccessTable.jsx';
 import PartialRevokeSelector from '../components/PartialRevokeSelector.jsx';
 import AccountSelector from '../components/AccountSelector.jsx';
+import ServiceIcon from '../components/ServiceIcon.jsx';
 import './RecertificationReview.css';
 
 const REVOKE_REASONS = ['Unnecessary access', 'Security concern', 'Resource decommissioned', 'Policy violation', 'Other'];
@@ -174,8 +175,8 @@ const RecertificationReview = () => {
       </div>
       {Object.entries(groupedByService).map(([service, items]) => (
         <div key={service} className="source-group">
-          <h3 className="source-group-title">
-            {SERVICE_ICONS[service] || '📦'} {SERVICE_LABELS[service] || service.toUpperCase()} ({items.length})
+          <h3 className="source-group-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ServiceIcon service={service} /> {SERVICE_LABELS[service] || service.toUpperCase()} ({items.length})
           </h3>
           <ResourceList
             items={items}
@@ -305,7 +306,7 @@ const ResourceList = ({ items, decisions, onDecision, selected, onSelect, onRevo
         return (
           <div key={key}>
             <div className="resource-row" title={item.resourceArn || item.arn}>
-              {!readOnly && <input type="checkbox" className="resource-checkbox" checked={selected.has(key)} onChange={() => onSelect(key)} disabled={!isPending || hasAccessEntries} />}
+              {!readOnly && <input type="checkbox" className="resource-checkbox" checked={selected.has(key)} onChange={() => onSelect(key)} disabled={!isPending || hasAccessEntries} title={hasAccessEntries ? 'Decisions for this resource are made per-principal — expand the row (▸) to certify/revoke each principal' : (!isPending ? 'Already decided' : 'Select for bulk certify')} />}
               {hasExpandable ? (
                 <button className="expand-toggle" onClick={() => toggleExpand(key)} title="Toggle access details">
                   {isExpanded ? 'v' : '>'}

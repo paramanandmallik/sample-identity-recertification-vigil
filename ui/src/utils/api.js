@@ -130,9 +130,9 @@ export const submitDecisions = (cycleId, decisions, onBehalfOf) =>
     body: { cycleId, decisions, onBehalfOf },
   });
 
-/** Get a single decision's enforcement status (engine: GET /decisions/{decisionId}) */
+/** Get a single decision's enforcement status (engine: GET /decisions?decisionId=) */
 export const getDecisionStatus = (decisionId) =>
-  apiRequest(`/decisions/${encodeURIComponent(decisionId)}`);
+  apiRequest('/decisions', { params: { decisionId } });
 
 /** List all recertification cycles with stats (engine: GET /cycles) */
 export const listCycles = () => apiRequest('/cycles');

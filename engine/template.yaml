@@ -224,7 +224,7 @@ Resources:
         GetCycle: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/cycles/{cycleId}', Method: GET } }
         GetReviews: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /reviews, Method: GET } }
         PostDecisions: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /decisions, Method: POST } }
-        GetDecision: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/decisions/{decisionId}', Method: GET } }
+        GetDecision: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /decisions, Method: GET } }
         GetSnapshots: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/resources/{arn}/snapshots', Method: GET } }
         PostRollback: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /rollback, Method: POST } }
 
@@ -272,7 +272,7 @@ Resources:
               Action: [s3:GetBucketPolicy, s3:PutBucketPolicy, s3:DeleteBucketPolicy, s3:GetPublicAccessBlock, s3:PutPublicAccessBlock, s3:GetBucketAcl, s3:PutBucketAcl]
               Resource: '*'
             - Effect: Allow
-              Action: [iam:ListAttachedUserPolicies, iam:DetachUserPolicy, iam:AttachUserPolicy, iam:ListGroupsForUser, iam:RemoveUserFromGroup, iam:AddUserToGroup, iam:ListAccessKeys, iam:UpdateAccessKey, iam:GetLoginProfile, iam:DeleteLoginProfile]
+              Action: [iam:ListAttachedUserPolicies, iam:DetachUserPolicy, iam:AttachUserPolicy, iam:ListGroupsForUser, iam:RemoveUserFromGroup, iam:AddUserToGroup, iam:ListAccessKeys, iam:UpdateAccessKey, iam:GetLoginProfile, iam:DeleteLoginProfile, iam:ListAttachedRolePolicies, iam:DetachRolePolicy, iam:AttachRolePolicy, iam:ListRolePolicies]
               Resource: '*'
             - Effect: Allow
               Action: [sts:AssumeRole]

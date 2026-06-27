@@ -39,7 +39,7 @@ export const handler = async (event) => {
     if (httpMethod === 'GET' && pathParameters?.cycleId) return await getCycle(pathParameters.cycleId);
     if (httpMethod === 'GET' && path === '/reviews') return await getReviews(event);
     if (httpMethod === 'POST' && path === '/decisions') return await postDecisions(event);
-    if (httpMethod === 'GET' && pathParameters?.decisionId) return await getDecision(pathParameters.decisionId);
+    if (httpMethod === 'GET' && path === '/decisions') return await getDecision(event.queryStringParameters?.decisionId);
     if (httpMethod === 'GET' && path?.includes('/snapshots')) return await getSnapshots(pathParameters?.arn);
     if (httpMethod === 'POST' && path === '/rollback') return await postRollback(event);
     return fail(404, 'Not found');
@@ -172,6 +172,7 @@ const postDecisions = async (event) => {
 };
 
 const getDecision = async (decisionId) => {
+  if (!decisionId) return fail(400, 'decisionId query parameter is required');
   const r = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.decision(decisionId) }));
   if (!r.Item) return fail(404, 'Decision not found');
   const d = r.Item;

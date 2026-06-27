@@ -114,11 +114,11 @@ paths:
                         properties:
                           results: { type: array, items: { $ref: '#/components/schemas/DecisionResult' } }
         '400': { description: Validation error }
-  /decisions/{decisionId}:
+  /decisions/status:
     get:
-      summary: Enforcement status for a decision
+      summary: Enforcement status for a decision (use GET /decisions?decisionId=)
       parameters:
-        - { name: decisionId, in: path, required: true, schema: { type: string } }
+        - { name: decisionId, in: query, required: true, schema: { type: string }, description: 'Deterministic decision id (cycleId::resourceArn::principalArn)' }
       responses:
         '200':
           description: OK
@@ -135,6 +135,7 @@ paths:
                           enforcementStatus: { type: string, enum: [NOT_REQUIRED, PENDING, IN_PROGRESS, ENFORCED, FAILED, TICKETED] }
                           actions: { type: array, items: { type: string } }
                           applied: { type: boolean, nullable: true }
+        '400': { description: decisionId query parameter missing }
         '404': { description: Not found }
   /resources/{arn}/snapshots:
     get:

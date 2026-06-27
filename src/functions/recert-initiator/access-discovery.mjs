@@ -38,7 +38,7 @@ const determinePrincipalType = (arn) => {
   if (arn.includes(':user/')) return 'IAM_USER';
   if (arn.includes(':role/')) return 'IAM_ROLE';
   if (arn.includes(':assumed-role/')) return 'IAM_ROLE';
-  if (arn.includes('.amazonaws.com')) return 'AWS_SERVICE';
+  if (arn.endsWith('.amazonaws.com')) return 'AWS_SERVICE';
   if (/^arn:aws:iam::\d{12}:root$/.test(arn)) return 'AWS_ACCOUNT';
   if (/^\d{12}$/.test(arn)) return 'AWS_ACCOUNT';
   return 'IAM_USER';

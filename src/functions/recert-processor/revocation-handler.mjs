@@ -237,7 +237,7 @@ async function executeS3Revocation({ resourceArn, resourceType, cycleId, ownerEm
       resourceArn,
       cycleId,
       accountId: accountId || MANAGEMENT_ACCOUNT_ID,
-      message: error.message,
+      errorName: error.name,
       timestamp: toISOString(new Date()),
     }));
 
@@ -390,7 +390,7 @@ async function executeIamRevocation({ resourceArn, resourceType, cycleId, ownerE
       resourceArn,
       cycleId,
       accountId: accountId || MANAGEMENT_ACCOUNT_ID,
-      message: error.message,
+      errorName: error.name,
       timestamp: toISOString(new Date()),
     }));
 

@@ -70,7 +70,7 @@ export const handler = async (event) => {
 
     logInfo('STATS_AGGREGATION_COMPLETE', { date: today, totalUsers: stats.totalUsers });
   } catch (error) {
-    logError('STATS_AGGREGATION_FAILED', error.message);
+    logError('STATS_AGGREGATION_FAILED', error.name);
     throw error;
   }
 };
@@ -529,7 +529,7 @@ const cacheResourceData = async () => {
         // Update lastSyncedAt on account record (Task 8.5)
         await updateAccountLastSyncedAt(account.accountId);
       } catch (error) {
-        logError('CROSS_ACCOUNT_CACHE_FAILED', `Account ${account.accountId}: ${error.message}`);
+        logError('CROSS_ACCOUNT_CACHE_FAILED', `Account ${account.accountId}: ${error.name}`);
         accountStats.push({ accountId: account.accountId, accountName: account.accountName, resourceCount: 0, lastSyncedAt: null, error: error.message });
         // Continue to next account
       }
@@ -597,7 +597,7 @@ const cacheResourceData = async () => {
 
     logInfo('RESOURCE_CACHE_WRITTEN', { total: allResources.length, unowned: unowned.length, accountsProcessed: accountStats.length });
   } catch (err) {
-    logError('RESOURCE_CACHE_FAILED', err.message);
+    logError('RESOURCE_CACHE_FAILED', err.name);
   }
 };
 
@@ -645,7 +645,7 @@ const discoverResourcesForAccount = async (client, accountId, accountName) => {
       }
       paginationToken = result.PaginationToken;
     } catch (err) {
-      logError('CACHE_DISCOVERY_FAILED', `Account ${accountId}: ${err.message}`);
+      logError('CACHE_DISCOVERY_FAILED', `Account ${accountId}: ${err.name}`);
       break;
     }
   } while (paginationToken);
@@ -667,6 +667,6 @@ const updateAccountLastSyncedAt = async (accountId) => {
       ExpressionAttributeValues: { ':now': toISOString(new Date()) },
     }));
   } catch (error) {
-    logError('ACCOUNT_SYNC_UPDATE_FAILED', `Account ${accountId}: ${error.message}`);
+    logError('ACCOUNT_SYNC_UPDATE_FAILED', `Account ${accountId}: ${error.name}`);
   }
 };

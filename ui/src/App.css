@@ -1,4 +1,53 @@
-/* Global app styles - VIGIL light theme */
+/* Global app styles - AWS Management Console (Cloudscape) theme */
+
+/* Amazon Ember - self-hosted (same-origin, no CORS) for the authentic AWS console typeface */
+@font-face {
+  font-family: 'Amazon Ember';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/amazon-ember/AmazonEmber_Lt.woff2') format('woff2'),
+       url('/fonts/amazon-ember/AmazonEmber_Lt.woff') format('woff');
+}
+@font-face {
+  font-family: 'Amazon Ember';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/amazon-ember/AmazonEmber_Rg.woff2') format('woff2'),
+       url('/fonts/amazon-ember/AmazonEmber_Rg.woff') format('woff');
+}
+@font-face {
+  font-family: 'Amazon Ember';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/amazon-ember/AmazonEmber_Bd.woff2') format('woff2'),
+       url('/fonts/amazon-ember/AmazonEmber_Bd.woff') format('woff');
+}
+
+:root {
+  /* AWS Cloudscape design tokens */
+  --aws-squid-ink: #232f3e;        /* global top navigation */
+  --aws-squid-ink-light: #2d3a48;
+  --aws-blue: #0972d3;             /* primary action / links */
+  --aws-blue-hover: #033160;
+  --aws-blue-active: #033160;
+  --aws-bg: #f2f3f3;               /* app layout background */
+  --aws-container: #ffffff;        /* containers / cards */
+  --aws-border: #e9ebed;           /* subtle borders */
+  --aws-border-strong: #d1d5db;
+  --aws-divider: #eaeded;
+  --aws-text: #16191f;             /* primary text */
+  --aws-text-secondary: #5f6b7a;   /* secondary text */
+  --aws-text-label: #414d5c;
+  --aws-success: #037f0c;
+  --aws-error: #d91515;
+  --aws-warning: #8d6605;
+  --aws-radius: 8px;
+  --aws-btn-radius: 20px;
+  --aws-font: 'Amazon Ember', 'Helvetica Neue', Roboto, Arial, 'Segoe UI', sans-serif;
+}
 
 *,
 *::before,
@@ -7,42 +56,85 @@
 }
 
 body {
-  background: #f5f7fa;
-  color: #1a202c;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif;
+  margin: 0;
+  background: var(--aws-bg);
+  color: var(--aws-text);
+  font-family: var(--aws-font);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
-  color: #4f46e5;
+  color: var(--aws-blue);
   text-decoration: none;
 }
 
 a:hover {
   text-decoration: underline;
-  color: #4338ca;
+  color: var(--aws-blue-hover);
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #f2f3f3;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
+  background: #b6bec9;
+  border-radius: 5px;
+  border: 2px solid #f2f3f3;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #8b95a1;
 }
 
 /* Selection */
 ::selection {
-  background: rgba(79, 70, 229, 0.2);
-  color: #1a202c;
+  background: rgba(9, 114, 211, 0.18);
+  color: var(--aws-text);
+}
+
+/* ---- AWS pill-shaped action buttons (Cloudscape) ----
+   Scoped under .aws-shell / .login-page for higher specificity so these win
+   regardless of CSS bundle order. Text/icon action buttons become pills;
+   square icon buttons (28px) become fully rounded to match Cloudscape. */
+.aws-shell .period-btn,
+.aws-shell .dash-error button,
+.aws-shell .detail-error button,
+.aws-shell .recert-error button,
+.aws-shell .admin-error button,
+.aws-shell .admin-btn,
+.aws-shell .back-btn,
+.aws-shell .dt-page-btn,
+.aws-shell .bulk-certify-btn,
+.aws-shell .submit-all-btn,
+.aws-shell .extend-btn,
+.aws-shell .btn-certify,
+.aws-shell .btn-revoke,
+.aws-shell .btn-modify,
+.aws-shell .act-behalf-btn,
+.aws-shell .uat-bulk-certify-btn,
+.aws-shell .uat-sort-btn,
+.aws-shell .uat-revoke-cancel,
+.aws-shell .uat-revoke-submit,
+.aws-shell .modal-cancel,
+.aws-shell .modal-confirm,
+.aws-shell .login-btn,
+.login-page .login-btn {
+  border-radius: var(--aws-btn-radius);
+}
+
+/* Square icon-action buttons -> fully rounded circles (AWS icon button) */
+.aws-shell .item-action-btn,
+.aws-shell .uat-btn-certify,
+.aws-shell .uat-btn-revoke,
+.aws-shell .uat-btn-modify {
+  border-radius: 50%;
 }

@@ -1,0 +1,24 @@
+{
+  "name": "recert-engine",
+  "version": "0.1.0",
+  "description": "Standalone AWS access recertification engine - discovery, owner decisions, durable enforcement, hash-chained evidence",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/",
+    "lint": "echo \"(configure eslint)\" && exit 0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/lib-dynamodb": "^3.700.0",
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-iam": "^3.700.0",
+    "@aws-sdk/client-sqs": "^3.700.0",
+    "@aws-sdk/client-ses": "^3.700.0",
+    "@aws-sdk/client-sts": "^3.700.0",
+    "@aws-sdk/client-resource-groups-tagging-api": "^3.700.0",
+    "@aws-sdk/client-cloudtrail": "^3.700.0"
+  }
+}

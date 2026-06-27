@@ -115,20 +115,24 @@ export const exportAudit = (startDate, endDate, format = 'csv') =>
 
 // Recertification API 
 
-/** Get current owner's pending reviews */
+/** Get current owner's pending reviews (engine: GET /reviews) */
 export const getMyReviews = (cycleId) =>
-  apiRequest('/recert/my-reviews', { params: { cycleId } });
+  apiRequest('/reviews', { params: { cycleId } });
 
-/** Get cycle details */
+/** Get cycle details (engine: GET /cycles/{cycleId}) */
 export const getCycleDetails = (cycleId) =>
-  apiRequest(`/recert/cycles/${cycleId}`);
+  apiRequest(`/cycles/${cycleId}`);
 
-/** Submit recertification decisions (supports both resource-level and per-principal formats) */
+/** Submit recertification decisions (engine: POST /decisions; verbs CERTIFY|MODIFY|REVOKE) */
 export const submitDecisions = (cycleId, decisions, onBehalfOf) =>
-  apiRequest('/recert/decisions', {
+  apiRequest('/decisions', {
     method: 'POST',
     body: { cycleId, decisions, onBehalfOf },
   });
+
+/** Get a single decision's enforcement status (engine: GET /decisions/{decisionId}) */
+export const getDecisionStatus = (decisionId) =>
+  apiRequest(`/decisions/${encodeURIComponent(decisionId)}`);
 
 /** Request deadline extension */
 export const requestExtension = (cycleId, reason) =>
@@ -144,11 +148,11 @@ export const transferReviews = (cycleId, oldOwnerEmail, newOwnerEmail) =>
     body: { oldOwnerEmail, newOwnerEmail },
   });
 
-/** Trigger manual/ad-hoc cycle */
-export const triggerCycle = (cycleType, scope, deadline) =>
-  apiRequest('/recert/cycles', {
+/** Trigger manual/ad-hoc cycle (engine: POST /cycles) */
+export const triggerCycle = (cycleType, scope, deadlineDays) =>
+  apiRequest('/cycles', {
     method: 'POST',
-    body: { cycleType, scope, deadline },
+    body: { cycleType, scope, deadlineDays },
   });
 
 /** Get user recertification history */

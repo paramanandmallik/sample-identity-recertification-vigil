@@ -35,7 +35,7 @@
 }
 
 .dt-th--sortable:hover {
-  color: #4f46e5;
+  color: #0972d3;
 }
 
 .dt-sort-icon {
@@ -98,9 +98,9 @@
 }
 
 .dt-page-btn:hover:not(:disabled) {
-  background: #4f46e5;
+  background: #0972d3;
   color: #fff;
-  border-color: #4f46e5;
+  border-color: #0972d3;
 }
 
 .dt-page-btn:disabled {

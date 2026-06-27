@@ -50,10 +50,14 @@ const Login = () => {
 
   return (
     <div className="login-page">
+      <div className="login-brand">
+        <span className="login-brand-logo">VIGIL</span>
+        <span className="login-brand-tag">Identity Governance &amp; Intelligence</span>
+      </div>
       <div className="login-card">
         <div className="login-header">
-          <h1 className="login-title">Identity Governance</h1>
-          <p className="login-subtitle">Audit Dashboard - Sign In</p>
+          <h1 className="login-title">Sign in</h1>
+          <p className="login-subtitle">Identity Governance Console</p>
         </div>
         <form className="login-form" onSubmit={handleSubmit}>
           {error && <div className="login-error">{error}</div>}

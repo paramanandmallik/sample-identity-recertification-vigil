@@ -1,7 +1,7 @@
 /**
- * Application layout - navigation sidebar + header + content area.
- * Professional, data-dense layout for compliance auditors and IT governance admins.
- * Recertification link always visible; page content depends on whether user is an approver.
+ * Application layout - AWS Management Console (Cloudscape) shell.
+ * Full-width squid-ink global top navigation, white side navigation panel,
+ * and a grey content canvas. Built for compliance auditors and IT governance admins.
  * @module components/Layout
  */
 
@@ -20,7 +20,7 @@ const getCurrentCycleId = () => {
 };
 
 /**
- * Layout component with sidebar navigation and header.
+ * Layout component with AWS-style global top nav and side navigation.
  */
 const Layout = () => {
   const { user, handleSignOut } = useAuth();
@@ -29,80 +29,71 @@ const Layout = () => {
 
   const isRecertActive = location.pathname.startsWith('/recert');
 
-  const NAV_ITEMS = [
-    { path: '/', label: 'Dashboard', icon: '📊' },
-    { path: '/search', label: 'User Search', icon: '🔍' },
-    { path: '/admin', label: 'Admin Console', icon: '⚙️' },
-  ];
+  const NAV_ITEMS = [];
 
   const handleRecertClick = (e) => {
     e.preventDefault();
     navigate(`/recert/${getCurrentCycleId()}`);
   };
 
+  const userLabel = user?.email || user?.username || 'User';
+  const groupsLabel = (user?.groups || []).join(', ') || 'No groups';
+
   return (
-    <div className="layout">
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h2 className="sidebar-title">VIGIL</h2>
-          <span className="sidebar-subtitle">Identity Governance & Intelligence</span>
+    <div className="aws-shell">
+      {/* Global top navigation (squid ink) */}
+      <header className="aws-topnav">
+        <div className="aws-topnav-left">
+          <span className="aws-topnav-logo">VIGIL</span>
+          <span className="aws-topnav-sep" aria-hidden="true" />
+          <span className="aws-topnav-service">Identity Governance &amp; Intelligence</span>
         </div>
-        <nav className="sidebar-nav">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              className={({ isActive }) =>
-                `nav-link ${isActive ? 'nav-link--active' : ''}`
-              }
-            >
-              <span className="nav-icon">{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-          {/* Recertification - always visible, navigates to current quarter */}
-          <a
-            href={`/recert/${getCurrentCycleId()}`}
-            onClick={handleRecertClick}
-            className={`nav-link ${isRecertActive ? 'nav-link--active' : ''}`}
-          >
-            <span className="nav-icon">✅</span>
-            <span className="nav-label">Recertification</span>
-          </a>
-          {/* Activity Report - last (not yet implemented) */}
-          <NavLink
-            to="/activity"
-            className={({ isActive }) => `nav-link ${isActive ? 'nav-link--active' : ''}`}
-          >
-            <span className="nav-icon">📈</span>
-            <span className="nav-label">Activity Report</span>
-          </NavLink>
-        </nav>
-        <div className="sidebar-footer">
-          <div className="user-info">
-            <span className="user-name">{user?.email || user?.username || 'User'}</span>
-            <span className="user-groups">
-              {(user?.groups || []).join(', ') || 'No groups'}
-            </span>
-          </div>
-          <button className="sign-out-btn" onClick={handleSignOut}>
-            Sign Out
+        <div className="aws-topnav-right">
+          <span className="aws-topnav-region">IST (UTC+5:30)</span>
+          <span className="aws-topnav-user" title={groupsLabel}>{userLabel}</span>
+          <button className="aws-topnav-signout" onClick={handleSignOut}>
+            Sign out
           </button>
         </div>
-      </aside>
-      <main className="main-content">
-        <header className="top-header">
-          <div className="header-breadcrumb">
+      </header>
+
+      <div className="aws-body">
+        {/* Side navigation (white Cloudscape panel) */}
+        <aside className="aws-sidenav">
+          <div className="aws-sidenav-title">Identity Governance</div>
+          <nav className="aws-sidenav-nav">
+            {NAV_ITEMS.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === '/'}
+                className={({ isActive }) =>
+                  `aws-navlink ${isActive ? 'aws-navlink--active' : ''}`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+              <NavLink
+              to="/recert"
+              className={`aws-navlink ${isRecertActive ? 'aws-navlink--active' : ''}`}
+            >
+              Recertification
+            </NavLink>
+          </nav>
+          <div className="aws-sidenav-footer">
+            <span className="aws-sidenav-user">{userLabel}</span>
+            <span className="aws-sidenav-groups">{groupsLabel}</span>
           </div>
-          <div className="header-meta">
-            IST (UTC+5:30)
+        </aside>
+
+        {/* Content canvas */}
+        <main className="aws-main">
+          <div className="aws-content">
+            <Outlet />
           </div>
-        </header>
-        <div className="content-area">
-          <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 };

@@ -603,35 +603,57 @@ const groupByOwnerEmail = (items) => {
   return map;
 };
 
+/**
+ * Map a UI decision (CERTIFIED/REVOKED/MODIFIED + partialRevoke) to the engine
+ * contract (CERTIFY/MODIFY/REVOKE + changes).
+ */
+const toEngineVerb = (d) => {
+  if (d.decision === 'CERTIFIED') return { decision: 'CERTIFY' };
+  if (d.decision === 'REVOKED') {
+    if (d.partialRevoke) return { decision: 'MODIFY', changes: partialToChanges(d.partialRevoke) };
+    return { decision: 'REVOKE' };
+  }
+  if (d.decision === 'MODIFIED') {
+    // Per-principal modify sends reason as JSON {modifyActions:{remove:[...]}}
+    let changes = null;
+    if (typeof d.reason === 'string' && d.reason.startsWith('{')) {
+      try { const p = JSON.parse(d.reason); if (p.modifyActions?.remove) changes = { removeActions: p.modifyActions.remove }; } catch { /* ignore */ }
+    }
+    return { decision: 'MODIFY', changes };
+  }
+  return { decision: d.decision };
+};
+
+/** Map the legacy partialRevoke selection to engine `changes`. */
+const partialToChanges = (pr) => {
+  const c = {};
+  // IAM user partials
+  if (pr.managedPolicies?.length) c.removePolicies = pr.managedPolicies;
+  if (pr.groups?.length) c.removeGroups = pr.groups;
+  if (pr.accessKeys?.length) c.removeAccessKeys = pr.accessKeys;
+  // S3 bucket partials
+  if (pr.policyStatements?.length) c.removeStatements = pr.policyStatements;
+  if (pr.aclGrants?.length) c.removeAclGrants = pr.aclGrants;
+  if (pr.enablePublicAccessBlock) c.enablePublicAccessBlock = true;
+  if (pr.policyActions?.length) c.removeActions = pr.policyActions;
+  return Object.keys(c).length ? c : pr;
+};
+
+/** A plain reason string (not the JSON modify payload). */
+const plainReason = (d) => (typeof d.reason === 'string' && !d.reason.startsWith('{')) ? d.reason : (d.comment || null);
+
 const buildDecisionBatch = (reviews, decisions, resourceKey, principalDecisions = {}) => {
   const batch = [];
 
-  // Resource-level decisions (for items without accessEntries)
+  // Resource-level decisions (items without accessEntries)
   for (const [key, d] of Object.entries(decisions)) {
-    const review = reviews.find((r) => resourceKey(r) === key);
-    const decision = {
-      resourceArn: key,
-      decision: d.decision,
-      reason: d.reason || null,
-      comment: d.comment || null,
-      reviewDurationSeconds: 0,
-      resourceType: d.resourceType || review?.resourceType || 'unknown',
-    };
-    if (d.partialRevoke) {
-      decision.partialRevoke = d.partialRevoke;
-    }
-    batch.push(decision);
+    batch.push({ resourceArn: key, reason: plainReason(d), ...toEngineVerb(d) });
   }
 
-  // Per-principal decisions (for items with accessEntries)
+  // Per-principal decisions (items with accessEntries)
   for (const [resourceArn, perPrincipal] of Object.entries(principalDecisions)) {
     for (const [principalArn, d] of Object.entries(perPrincipal)) {
-      batch.push({
-        resourceArn,
-        principalArn,
-        decision: d.decision,
-        reason: d.reason || null,
-      });
+      batch.push({ resourceArn, principalArn, reason: plainReason(d), ...toEngineVerb(d) });
     }
   }
 

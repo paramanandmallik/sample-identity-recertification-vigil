@@ -19,7 +19,7 @@
 .dash-error button {
   margin-top: 16px;
   padding: 10px 24px;
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: #0972d3;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -30,7 +30,7 @@
 
 .dash-error button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 115, 230, 0.3);
 }
 
 /* Summary cards */
@@ -45,7 +45,7 @@
 .summary-card {
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-top: 3px solid #4f46e5;
+  border-top: 3px solid #0972d3;
   border-radius: 8px;
   padding: 20px;
   text-align: center;
@@ -129,7 +129,7 @@
 }
 
 .period-btn--active {
-  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  background: #0972d3;
   color: #fff;
   font-weight: 600;
 }
@@ -217,7 +217,7 @@
 .account-breakdown-count {
   font-size: 28px;
   font-weight: 800;
-  color: #4f46e5;
+  color: #0972d3;
   line-height: 1.2;
 }
 

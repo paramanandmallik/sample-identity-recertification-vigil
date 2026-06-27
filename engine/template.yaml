@@ -1,0 +1,353 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Recertification Engine - standalone access recertification for AWS. Discovery,
+  owner decisions, durable scoped enforcement, and hash-chained evidence.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  SesSenderEmail:
+    Type: String
+    Default: noreply@example.com
+    Description: Verified SES sender for owner notifications
+  UiBaseUrl:
+    Type: String
+    Default: ''
+    Description: Base URL of the client UI (used in email deep links)
+  RecertDeadlineDays:
+    Type: Number
+    Default: 14
+  CrossAccountRoleName:
+    Type: String
+    Default: VIGILCrossAccountRole
+    Description: Role assumed in member accounts for cross-account enforcement
+  CognitoUserPoolArn:
+    Type: String
+    Default: ''
+    Description: Existing Cognito User Pool ARN to authorize the API. Leave blank to create one.
+  EnableEvidenceBucket:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Create an S3 Object Lock (WORM) bucket for evidence mirroring
+
+Conditions:
+  CreatePool: !Equals [!Ref CognitoUserPoolArn, '']
+  WithEvidence: !Equals [!Ref EnableEvidenceBucket, 'true']
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    MemorySize: 256
+    Timeout: 60
+    Tracing: Active
+    CodeUri: src/
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref RecertTable
+        ENFORCEMENT_QUEUE_URL: !Ref EnforcementQueue
+        EVIDENCE_BUCKET: !If [WithEvidence, !Ref EvidenceBucket, '']
+        SES_SENDER_EMAIL: !Ref SesSenderEmail
+        UI_BASE_URL: !Ref UiBaseUrl
+        RECERT_DEADLINE_DAYS: !Ref RecertDeadlineDays
+        CROSS_ACCOUNT_ROLE_NAME: !Ref CrossAccountRoleName
+        DISCOVERY_FUNCTION: !Sub 'recert-engine-discovery-${Stage}'
+        NOTIFIER_FUNCTION: !Sub 'recert-engine-notifier-${Stage}'
+    Tags:
+      Project: RecertEngine
+      Environment: !Ref Stage
+
+Resources:
+
+  # ---- Data store ----
+  RecertTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'RecertEngine-${Stage}'
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification: { SSEEnabled: true }
+      PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true }
+      AttributeDefinitions:
+        - { AttributeName: PK, AttributeType: S }
+        - { AttributeName: SK, AttributeType: S }
+        - { AttributeName: GSI1PK, AttributeType: S }
+        - { AttributeName: GSI1SK, AttributeType: S }
+      KeySchema:
+        - { AttributeName: PK, KeyType: HASH }
+        - { AttributeName: SK, KeyType: RANGE }
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - { AttributeName: GSI1PK, KeyType: HASH }
+            - { AttributeName: GSI1SK, KeyType: RANGE }
+          Projection: { ProjectionType: ALL }
+
+  # ---- Enforcement queue + DLQ ----
+  EnforcementDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'recert-engine-enforcement-dlq-${Stage}'
+      MessageRetentionPeriod: 1209600
+
+  EnforcementQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub 'recert-engine-enforcement-${Stage}'
+      VisibilityTimeout: 360
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EnforcementDLQ.Arn
+        maxReceiveCount: 5
+
+  EnforcementDLQAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'recert-engine-enforcement-dlq-not-empty-${Stage}'
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Dimensions:
+        - { Name: QueueName, Value: !GetAtt EnforcementDLQ.QueueName }
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  # ---- Evidence bucket (optional WORM) ----
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    Condition: WithEvidence
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'recert-engine-evidence-${Stage}-${AWS::AccountId}'
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule: { DefaultRetention: { Mode: COMPLIANCE, Days: 2920 } }
+      VersioningConfiguration: { Status: Enabled }
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ---- Cognito (created only if no external pool provided) ----
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Condition: CreatePool
+    Properties:
+      UserPoolName: !Sub 'RecertEngine-${Stage}'
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Condition: CreatePool
+    Properties:
+      ClientName: !Sub 'RecertEngine-Client-${Stage}'
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_SRP_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+  CognitoAdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Condition: CreatePool
+    Properties: { GroupName: admin, UserPoolId: !Ref CognitoUserPool, Description: Engine administrators }
+  CognitoOwnerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Condition: CreatePool
+    Properties: { GroupName: owner, UserPoolId: !Ref CognitoUserPool, Description: Resource owners }
+
+  # ---- API ----
+  RecertApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub 'RecertEngine-API-${Stage}'
+      StageName: !Ref Stage
+      TracingEnabled: true
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: CognitoAuth
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          CognitoAuth:
+            UserPoolArn: !If [CreatePool, !GetAtt CognitoUserPool.Arn, !Ref CognitoUserPoolArn]
+
+  # ---- Functions ----
+  RecertApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'recert-engine-api-${Stage}'
+      Handler: api/handler.handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: [!GetAtt RecertTable.Arn, !Sub '${RecertTable.Arn}/index/*']
+            - Effect: Allow
+              Action: [sqs:SendMessage]
+              Resource: !GetAtt EnforcementQueue.Arn
+            - Effect: Allow
+              Action: [lambda:InvokeFunction]
+              Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:recert-engine-discovery-${Stage}'
+            # Rollback (admin) restores resource state:
+            - Effect: Allow
+              Action: [s3:GetBucketPolicy, s3:PutBucketPolicy, s3:DeleteBucketPolicy, s3:GetPublicAccessBlock, s3:PutPublicAccessBlock, s3:GetBucketAcl, s3:PutBucketAcl]
+              Resource: '*'
+            - Effect: Allow
+              Action: [iam:AttachUserPolicy, iam:AddUserToGroup, iam:UpdateAccessKey]
+              Resource: '*'
+            - Effect: Allow
+              Action: [sts:AssumeRole]
+              Resource: !Sub 'arn:aws:iam::*:role/${CrossAccountRoleName}'
+      Events:
+        CreateCycle: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /cycles, Method: POST } }
+        GetCycle: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/cycles/{cycleId}', Method: GET } }
+        GetReviews: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /reviews, Method: GET } }
+        PostDecisions: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /decisions, Method: POST } }
+        GetDecision: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/decisions/{decisionId}', Method: GET } }
+        GetSnapshots: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/resources/{arn}/snapshots', Method: GET } }
+        PostRollback: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /rollback, Method: POST } }
+
+  RecertDiscoveryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'recert-engine-discovery-${Stage}'
+      Handler: discovery/handler.handler
+      Timeout: 300
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:GetItem]
+              Resource: [!GetAtt RecertTable.Arn, !Sub '${RecertTable.Arn}/index/*']
+            - Effect: Allow
+              Action: [tag:GetResources]
+              Resource: '*'
+            - Effect: Allow
+              Action: [s3:GetBucketPolicy, s3:GetPublicAccessBlock, s3:GetBucketAcl]
+              Resource: '*'
+            - Effect: Allow
+              Action: [iam:ListAttachedUserPolicies, iam:ListGroupsForUser, iam:ListAccessKeys]
+              Resource: '*'
+            - Effect: Allow
+              Action: [lambda:InvokeFunction]
+              Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:recert-engine-notifier-${Stage}'
+            - Effect: Allow
+              Action: [sts:AssumeRole]
+              Resource: !Sub 'arn:aws:iam::*:role/${CrossAccountRoleName}'
+
+  RecertEnforcerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'recert-engine-enforcer-${Stage}'
+      Handler: enforcer/handler.handler
+      Timeout: 120
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: [!GetAtt RecertTable.Arn, !Sub '${RecertTable.Arn}/index/*']
+            - Effect: Allow
+              Action: [s3:GetBucketPolicy, s3:PutBucketPolicy, s3:DeleteBucketPolicy, s3:GetPublicAccessBlock, s3:PutPublicAccessBlock, s3:GetBucketAcl, s3:PutBucketAcl]
+              Resource: '*'
+            - Effect: Allow
+              Action: [iam:ListAttachedUserPolicies, iam:DetachUserPolicy, iam:AttachUserPolicy, iam:ListGroupsForUser, iam:RemoveUserFromGroup, iam:AddUserToGroup, iam:ListAccessKeys, iam:UpdateAccessKey, iam:GetLoginProfile, iam:DeleteLoginProfile]
+              Resource: '*'
+            - Effect: Allow
+              Action: [sts:AssumeRole]
+              Resource: !Sub 'arn:aws:iam::*:role/${CrossAccountRoleName}'
+            - !If
+              - WithEvidence
+              - Effect: Allow
+                Action: [s3:PutObject]
+                Resource: !Sub '${EvidenceBucket.Arn}/evidence/*'
+              - !Ref AWS::NoValue
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EnforcementQueue.Arn
+            BatchSize: 5
+            FunctionResponseTypes: [ReportBatchItemFailures]
+
+  RecertNotifierFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'recert-engine-notifier-${Stage}'
+      Handler: notifier/handler.handler
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [dynamodb:Query, dynamodb:GetItem, dynamodb:PutItem]
+              Resource: [!GetAtt RecertTable.Arn, !Sub '${RecertTable.Arn}/index/*']
+            - Effect: Allow
+              Action: [ses:SendEmail, ses:SendRawEmail]
+              Resource: '*'
+
+  # ---- Scheduled quarterly cycle start ----
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeDiscovery
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [lambda:InvokeFunction]
+                Resource: !GetAtt RecertDiscoveryFunction.Arn
+
+  QuarterlyRecertSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub 'recert-engine-quarterly-${Stage}'
+      ScheduleExpression: 'cron(0 0 1 1,4,7,10 ? *)'
+      FlexibleTimeWindow: { Mode: 'OFF' }
+      Target:
+        Arn: !GetAtt RecertDiscoveryFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"cycleType":"QUARTERLY"}'
+
+Outputs:
+  ApiEndpoint:
+    Value: !Sub 'https://${RecertApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+  TableName:
+    Value: !Ref RecertTable
+  EnforcementQueueUrl:
+    Value: !Ref EnforcementQueue
+  EvidenceBucketName:
+    Condition: WithEvidence
+    Value: !Ref EvidenceBucket
+  CognitoUserPoolId:
+    Condition: CreatePool
+    Value: !Ref CognitoUserPool
+  CognitoUserPoolClientId:
+    Condition: CreatePool
+    Value: !Ref CognitoUserPoolClient

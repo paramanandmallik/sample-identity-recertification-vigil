@@ -20,15 +20,15 @@ import {
 import './Dashboard.css';
 
 const EVENT_COLORS = {
-  CREATED: '#00b894',
-  MODIFIED: '#0984e3',
-  DELETED: '#d63031',
-  DISABLED: '#fdcb6e',
-  DISABLED_AT_SOURCE: '#e17055',
+  CREATED: '#037f0c',
+  MODIFIED: '#0972d3',
+  DELETED: '#d91515',
+  DISABLED: '#8d6605',
+  DISABLED_AT_SOURCE: '#e07941',
 };
 
-const SOURCE_COLORS = ['#0984e3', '#00b894', '#6c5ce7', '#fdcb6e'];
-const STATUS_COLORS = ['#00b894', '#fdcb6e', '#d63031', '#e17055'];
+const SOURCE_COLORS = ['#688ae8', '#2ea597', '#8456ce', '#e07941'];
+const STATUS_COLORS = ['#037f0c', '#8d6605', '#d91515', '#e07941'];
 
 const PERIOD_OPTIONS = [
   { value: '7d', label: '7 Days' },
@@ -225,12 +225,12 @@ const SummaryCards = ({ summary }) => {
   const byStatus = userCounts.byStatus || {};
 
   const cards = [
-    { label: 'Total Users', value: userCounts.total ?? 0, color: '#0984e3' },
-    { label: 'Active', value: byStatus.ACTIVE ?? 0, color: '#00b894' },
-    { label: 'Disabled', value: byStatus.DISABLED ?? 0, color: '#fdcb6e' },
-    { label: 'Deleted', value: byStatus.DELETED ?? 0, color: '#d63031' },
-    { label: 'Inactive', value: byStatus.INACTIVE ?? activity.inactive90Days ?? 0, color: '#e17055' },
-    { label: 'Active Today', value: activity.activeToday ?? 0, color: '#6c5ce7' },
+    { label: 'Total Users', value: userCounts.total ?? 0, color: '#0972d3' },
+    { label: 'Active', value: byStatus.ACTIVE ?? 0, color: '#037f0c' },
+    { label: 'Disabled', value: byStatus.DISABLED ?? 0, color: '#8d6605' },
+    { label: 'Deleted', value: byStatus.DELETED ?? 0, color: '#d91515' },
+    { label: 'Inactive', value: byStatus.INACTIVE ?? activity.inactive90Days ?? 0, color: '#e07941' },
+    { label: 'Active Today', value: activity.activeToday ?? 0, color: '#8456ce' },
   ];
 
   return (

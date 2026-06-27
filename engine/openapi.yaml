@@ -1,0 +1,161 @@
+openapi: 3.0.3
+info:
+  title: Recertification Engine API
+  version: 0.1.0
+  description: >
+    Integration contract for the access recertification engine. All endpoints require a
+    Cognito ID token in the Authorization header. Owner identity is derived from the token.
+
+servers:
+  - url: https://{apiId}.execute-api.{region}.amazonaws.com/{stage}
+    variables:
+      apiId: { default: REPLACE }
+      region: { default: us-east-1 }
+      stage: { default: dev }
+
+components:
+  securitySchemes:
+    CognitoJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Decision:
+      type: object
+      required: [resourceArn, decision]
+      properties:
+        resourceArn: { type: string, example: 'arn:aws:s3:::acme-data' }
+        principalArn: { type: string, nullable: true, description: 'Set for per-principal decisions', example: 'arn:aws:iam::111122223333:user/alice' }
+        decision: { type: string, enum: [CERTIFY, MODIFY, REVOKE] }
+        reason: { type: string, nullable: true }
+        changes:
+          type: object
+          nullable: true
+          description: 'For MODIFY. S3: {removeActions:[...]}. IAM user: {removePolicies,removeGroups,removeAccessKeys}'
+    DecisionResult:
+      type: object
+      properties:
+        resourceArn: { type: string }
+        principalArn: { type: string, nullable: true }
+        decisionId: { type: string }
+        decision: { type: string }
+        status: { type: string, enum: [QUEUED, NOT_REQUIRED, DUPLICATE, INVALID, NOT_FOUND] }
+    Envelope:
+      type: object
+      properties:
+        success: { type: boolean }
+        data: { type: object }
+        error: { type: string }
+
+security:
+  - CognitoJwt: []
+
+paths:
+  /cycles:
+    post:
+      summary: Start a recertification cycle (triggers async discovery)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cycleType: { type: string, enum: [QUARTERLY, AD_HOC], default: QUARTERLY }
+                cycleId: { type: string, nullable: true }
+                deadlineDays: { type: integer, nullable: true }
+                scope:
+                  type: object
+                  nullable: true
+                  properties:
+                    accountId: { type: string }
+      responses:
+        '202': { description: Cycle accepted; discovery running, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /cycles/{cycleId}:
+    get:
+      summary: Cycle summary + per-owner progress
+      parameters:
+        - { name: cycleId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '404': { description: Not found }
+  /reviews:
+    get:
+      summary: Current owner's review items
+      parameters:
+        - { name: cycleId, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /decisions:
+    post:
+      summary: Submit certify/modify/revoke decisions (enqueues enforcement)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cycleId, decisions]
+              properties:
+                cycleId: { type: string }
+                onBehalfOf: { type: string, nullable: true, description: 'Designated-leader acting for an owner' }
+                decisions: { type: array, items: { $ref: '#/components/schemas/Decision' } }
+      responses:
+        '200':
+          description: Decisions recorded and queued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          results: { type: array, items: { $ref: '#/components/schemas/DecisionResult' } }
+        '400': { description: Validation error }
+  /decisions/{decisionId}:
+    get:
+      summary: Enforcement status for a decision
+      parameters:
+        - { name: decisionId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          enforcementStatus: { type: string, enum: [NOT_REQUIRED, PENDING, IN_PROGRESS, ENFORCED, FAILED, TICKETED] }
+                          actions: { type: array, items: { type: string } }
+                          applied: { type: boolean, nullable: true }
+        '404': { description: Not found }
+  /resources/{arn}/snapshots:
+    get:
+      summary: Before-state snapshots captured for a resource
+      parameters:
+        - { name: arn, in: path, required: true, schema: { type: string }, description: 'URL-encoded resource ARN' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+  /rollback:
+    post:
+      summary: Restore a resource to a prior snapshot (admin group required)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [resourceArn]
+              properties:
+                resourceArn: { type: string }
+                snapshotSK: { type: string, nullable: true, description: 'Specific snapshot; defaults to most recent' }
+      responses:
+        '200': { description: Rolled back, content: { application/json: { schema: { $ref: '#/components/schemas/Envelope' } } } }
+        '403': { description: Not an admin }

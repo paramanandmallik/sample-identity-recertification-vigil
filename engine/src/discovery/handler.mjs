@@ -26,13 +26,16 @@ const s3 = new S3Client({});
 const iam = new IAMClient({});
 const lambda = new LambdaClient({});
 
+const NOTYPE = { sns: 'topic', sqs: 'queue' };
 const parseArn = (arn) => {
   const p = (arn || '').split(':');
   const service = p[2] || 'unknown';
+  const region = p[3] || '';
   const rest = p.slice(5).join(':');
-  if (service === 's3') return { service, type: `${service}:bucket`, id: rest, region: p[3] || '' };
-  const [t, ...r] = rest.includes('/') ? rest.split('/') : rest.split(':');
-  return { service, type: `${service}:${t || 'resource'}`, id: r.join('/') || rest, region: p[3] || '' };
+  if (service === 's3') return { service, type: 's3:bucket', id: rest, region };
+  if (rest.includes('/')) { const [t, ...r] = rest.split('/'); return { service, type: `${service}:${t || 'resource'}`, id: r.join('/'), region }; }
+  if (rest.includes(':')) { const [t, ...r] = rest.split(':'); return { service, type: `${service}:${t || 'resource'}`, id: r.join(':'), region }; }
+  return { service, type: `${service}:${NOTYPE[service] || 'resource'}`, id: rest, region };
 };
 
 const discover = async () => {

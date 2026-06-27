@@ -8,18 +8,19 @@
 
 import { S3Client } from '@aws-sdk/client-s3';
 import { IAMClient } from '@aws-sdk/client-iam';
+import { EC2Client } from '@aws-sdk/client-ec2';
 import { config, getAccountId } from './config.mjs';
 
 /**
  * @param {string} [accountId] - Account the resource lives in. Defaults to this account.
- * @returns {Promise<{ s3: S3Client, iam: IAMClient, accountId: string }>}
+ * @returns {Promise<{ s3: S3Client, iam: IAMClient, ec2: EC2Client, accountId: string }>}
  */
 export const buildClients = async (accountId) => {
   const self = await getAccountId();
   const target = accountId || self;
 
   if (target === self) {
-    return { s3: new S3Client({}), iam: new IAMClient({}), accountId: target };
+    return { s3: new S3Client({}), iam: new IAMClient({}), ec2: new EC2Client({}), accountId: target };
   }
 
   const { STSClient, AssumeRoleCommand } = await import('@aws-sdk/client-sts');
@@ -34,5 +35,5 @@ export const buildClients = async (accountId) => {
     secretAccessKey: res.Credentials.SecretAccessKey,
     sessionToken: res.Credentials.SessionToken,
   };
-  return { s3: new S3Client({ credentials }), iam: new IAMClient({ credentials }), accountId: target };
+  return { s3: new S3Client({ credentials }), iam: new IAMClient({ credentials }), ec2: new EC2Client({ credentials }), accountId: target };
 };

@@ -1,381 +1,211 @@
-# VIGIL - Vigilant Identity Governance & Intelligence Layer
+# VIGIL — Access Recertification Engine
 
-A lightweight, serverless identity governance solution built entirely on native AWS services. VIGIL provides immutable user lifecycle audit trails, proof of user deletion synchronization between external IdPs and AWS, user activity tracking, and quarterly access recertification workflows - all designed for Indian compliance requirements (MCA Rule 11(g), BSA 2023, DPDP Act 2023).
+VIGIL is a standalone, production-grade **access recertification engine** for AWS. It
+discovers resources by their `owner` tag, raises review requests to the owners, accepts
+owner decisions (**certify / modify / revoke**), and then **durably enforces the resulting
+permission change** on the resource — with an immutable, hash-chained evidence trail for
+every decision and every change applied.
+
+The engine is integration-first: a documented REST API drives all behavior, so it can be
+embedded behind your own UI. This repository also ships a minimal, AWS Console–styled
+React UI for owners and admins.
+
+> Looking for implementation details, the API reference, or how to extend the engine to
+> new resource types? See the **[Developer Guide](engine/DEVELOPER_GUIDE.md)**.
 
 ---
 
-## Architecture Overview
+## What it does
 
-VIGIL is a single-account serverless application deployed via AWS SAM. It uses a single DynamoDB table (single-table design), 10 Lambda functions, API Gateway with Cognito authorization, S3 with Object Lock for tamper-proof evidence storage, and EventBridge for scheduling and event routing. The UI is a React 18 SPA served from S3.
+1. **Discover** — enumerate resources tagged `owner=<email>`, resolve who has access to
+   each (bucket policy / IAM / ACL), and create per-owner review items for a cycle.
+2. **Request / notify** — email each owner their pending reviews with a deep link.
+3. **Decide** — owners certify, modify (remove specific permissions), or revoke, per
+   resource or per principal.
+4. **Enforce** — a durable, idempotent worker applies the change through a pluggable
+   **resource connector**, snapshotting the before-state for rollback and recording
+   hash-chained evidence.
+
+Automated enforcement ships for **Amazon S3 buckets**, **IAM users**, and **IAM roles**.
+Any other tagged resource type is fully recertifiable; unsupported types fall back to an
+IT-admin ticket instead of an unsafe automated change. New types are added by implementing
+one connector — see the Developer Guide.
+
+---
+
+## Repository layout
 
 ```
-+-------------------------------------------------------------------------+
-|                         AWS Management Account                          |
-|                                                                         |
-|  +----------+    +--------------+    +------------------------------+   |
-|  |  React   |--->| API Gateway  |--->|       Lambda Functions       |   |
-|  |  UI (S3) |    |  + Cognito   |    |  +--------+ +------------+  |   |
-|  +----------+    |  Authorizer  |    |  | Audit  | |  Recert    |  |   |
-|                  +--------------+    |  | Writer | | Initiator  |  |   |
-|                                      |  +--------+ +------------+  |   |
-|  +----------+    +--------------+    |  | Audit  | |  Recert    |  |   |
-|  |CloudTrail|--->| EventBridge  |--->|  | Query  | | Processor  |  |   |
-|  +----------+    |  + Scheduler |    |  +--------+ +------------+  |   |
-|                  +--------------+    |  |Activity| |  Recert    |  |   |
-|                                      |  |Tracker | | Notifier   |  |   |
-|  +----------+                        |  +--------+ +------------+  |   |
-|  | Cognito  |                        |  |  Sync  | |  Evidence  |  |   |
-|  |UserPool  |                        |  |Reconcl.| |  Archiver  |  |   |
-|  +----------+                        |  +--------+ +------------+  |   |
-|                                      +------------------------------+   |
-|                                                |                        |
-|                          +--------------------+--------------------+    |
-|                          v                    v                    v    |
-|                  +--------------+    +--------------+    +---------+    |
-|                  |   DynamoDB   |    |  S3 Evidence |    |   SES   |    |
-|                  | Single-Table |    | (Object Lock)|    | (Email) |    |
-|                  +--------------+    +--------------+    +---------+    |
-|                                                                         |
-+-------------------------------------------------------------------------+
-|                    AWS Organizations (Phase 2)                           |
-|  +-------------+  +-------------+  +-------------+                     |
-|  |  Member Acct|  |  Member Acct|  |  Member Acct|  <- StackSet        |
-|  |  (VIGIL    |  |  (VIGIL    |  |  (VIGIL    |    deploys            |
-|  |   Role)    |  |   Role)    |  |   Role)    |    cross-account      |
-|  +-------------+  +-------------+  +-------------+    IAM roles        |
-+-------------------------------------------------------------------------+
+engine/                  # The recertification engine (the product)
+  README.md              # Engine overview
+  DEVELOPER_GUIDE.md     # Full developer documentation
+  template.yaml          # Deployable SAM stack (engine only)
+  openapi.yaml           # REST API contract for client UIs
+  src/
+    api/                 # REST API handler (cycles, reviews, decisions, snapshots, rollback)
+    discovery/           # Owner-tag discovery + access enumeration
+    enforcer/            # SQS consumer -> connectors (durable enforcement)
+    notifier/            # SES owner notifications
+    connectors/          # Pluggable resource connectors (S3, IAM user, IAM role) + registry
+    core/                # Models, decision intake, enforcement orchestration, evidence, rollback
+    lib/                 # config, ddb, hash chain, time, http helpers
+  tests/                 # node:test unit tests
+ui/                      # React 18 + Vite SPA (Login + Recertification + Discovery admin)
+src/, scripts/, ...      # Legacy VIGIL platform components (audit, IdP sync, dashboards) — not
+                         # part of the shipped engine; retained for reference (tag: pre-engine)
 ```
+
+---
+
+## Architecture
+
+```
+                       +-------------------+
+  Client UI  --REST-->  |   recert-api      |  cycles / reviews / decisions / rollback
+  (Cognito JWT)        +---------+---------+
+                                 | enqueue (decision)
+                                 v
+                          +-------------+        +------------------+
+                          |  SQS queue  |--DLQ-->|  alarm + replay  |
+                          +------+------+        +------------------+
+                                 |
+                                 v
+                       +-------------------+   snapshot -> apply -> verify -> evidence
+                       |  recert-enforcer  |--> Resource Connectors (S3, IAM user, IAM role)
+                       +---------+---------+
+                                 |
+              +------------------+------------------+
+              v                  v                  v
+        DynamoDB            Evidence (optional      SES (owner notifications)
+   (cycles/items/           S3 WORM)
+    decisions/snapshots)
+```
+
+Discovery and notification run as their own Lambda functions, triggered on cycle creation
+and by an EventBridge schedule. The REST API is protected by an **Amazon Cognito user pool
+authorizer** (`COGNITO_USER_POOLS`); callers pass a Cognito ID token in the `Authorization`
+header.
 
 ---
 
 ## Prerequisites
 
-### Tools Required
-
 - AWS CLI v2
 - AWS SAM CLI v1.100+
-- Node.js 20.x
-- npm 10+
-
-### IAM Permissions Required by Deployer
-
-The IAM user/role running the deploy script needs the following permissions:
-
-| Service | Permissions | Purpose |
-|---------|-------------|---------|
-| **CloudFormation** | Full access (`cloudformation:*`) | Create/update/delete stacks |
-| **S3** | `s3:CreateBucket`, `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`, `s3:PutBucketPolicy`, `s3:PutPublicAccessBlock`, `s3:PutBucketWebsite` | SAM artifacts + UI hosting + evidence bucket |
-| **Lambda** | `lambda:CreateFunction`, `lambda:UpdateFunctionCode`, `lambda:UpdateFunctionConfiguration`, `lambda:AddPermission`, `lambda:DeleteFunction`, `lambda:GetFunction`, `lambda:InvokeFunction` | Create/update Lambda functions |
-| **API Gateway** | `apigateway:*` | Create/manage REST APIs, stages, deployments |
-| **DynamoDB** | `dynamodb:CreateTable`, `dynamodb:DescribeTable`, `dynamodb:UpdateTable`, `dynamodb:TagResource` | Create governance table |
-| **Cognito** | `cognito-idp:CreateUserPool`, `cognito-idp:CreateUserPoolClient`, `cognito-idp:CreateGroup`, `cognito-idp:AdminCreateUser`, `cognito-idp:AdminAddUserToGroup` | Create user pool + admin users |
-| **IAM** | `iam:CreateRole`, `iam:PutRolePolicy`, `iam:AttachRolePolicy`, `iam:PassRole`, `iam:CreatePolicy`, `iam:DeleteRole`, `iam:DeletePolicy` | Lambda execution roles, scheduler role |
-| **CloudFront** | `cloudfront:CreateDistribution`, `cloudfront:CreateInvalidation`, `cloudfront:ListDistributions` | UI CDN (optional) |
-| **SES** | `ses:VerifyEmailIdentity`, `ses:SendEmail` | Email notifications |
-| **EventBridge Scheduler** | `scheduler:CreateSchedule`, `scheduler:UpdateSchedule`, `scheduler:DeleteSchedule` | Cron jobs for reconciliation, recert |
-| **CloudTrail** | `cloudtrail:CreateTrail`, `cloudtrail:PutEventSelectors`, `cloudtrail:StartLogging` | Audit event capture |
-| **Organizations** | `organizations:ListAccounts`, `organizations:ListRoots` | StackSet deployment targets |
-| **CloudFormation StackSets** | `cloudformation:CreateStackSet`, `cloudformation:CreateStackInstances`, `cloudformation:DescribeStackSet` | Cross-account role deployment |
-| **SSM Parameter Store** | `ssm:PutParameter`, `ssm:GetParameter` | IdP configuration secrets |
-| **STS** | `sts:GetCallerIdentity`, `sts:AssumeRole` | Account ID lookup, cross-account |
+- Node.js 20+ (the engine runs on the `nodejs24.x` Lambda runtime, which provides AWS SDK v3)
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
-# Deploy everything with defaults (profile=default, region=us-east-1, stage=dev)
-./scripts/deploy.sh
+cd engine
 
-# Or specify parameters
-./scripts/deploy.sh my-profile us-east-1 prod
+# Build and deploy (creates its own Cognito pool if you don't supply one)
+sam build
+sam deploy --guided \
+  --stack-name recert-engine-dev \
+  --parameter-overrides Stage=dev SesSenderEmail=you@example.com \
+                        UiBaseUrl=https://your-ui.example.com
 ```
 
-The script is idempotent - safe to run multiple times.
+The deploy outputs the API endpoint, DynamoDB table name, SQS queue URL, and (if created)
+the Cognito user pool and client IDs.
+
+Create an admin/owner user in the pool:
+
+```bash
+aws cognito-idp admin-create-user --user-pool-id <POOL_ID> \
+  --username owner@example.com --user-attributes Name=email,Value=owner@example.com \
+  --message-action SUPPRESS
+aws cognito-idp admin-set-user-password --user-pool-id <POOL_ID> \
+  --username owner@example.com --password '<StrongTempPassword>' --permanent
+aws cognito-idp admin-add-user-to-group --user-pool-id <POOL_ID> \
+  --username owner@example.com --group-name owner
+```
+
+Tag a resource so it is discovered, then start a cycle from the UI **Discovery** page or:
+
+```bash
+curl -X POST "$API/cycles" -H "Authorization: <ID_TOKEN>" \
+  -H 'Content-Type: application/json' -d '{"cycleType":"AD_HOC"}'
+```
+
+Full deployment, API, and extension instructions are in the
+**[Developer Guide](engine/DEVELOPER_GUIDE.md)**.
+
+---
+
+## The UI
+
+`ui/` is a React 18 + Vite single-page app styled to match the AWS Management Console
+(Cloudscape look, Amazon Ember typeface). It contains exactly two areas:
+
+- **Recertification** — owners review and decide on their resources (per-resource and
+  per-principal).
+- **Discovery** (admin only) — start a fresh cycle and view run history with outcome counts
+  (certified / revoked / modified / pending, completion %).
+
+Configure `ui/.env` with the deployed `VITE_API_URL`, `VITE_COGNITO_USER_POOL_ID`, and
+`VITE_COGNITO_CLIENT_ID`, then `npm run build` and host `dist/` (for example on S3 +
+CloudFront).
 
 ---
 
 ## Configuration
 
-### Environment Variables (UI)
-
-Edit `ui/.env` after deployment:
-
-```env
-VITE_API_URL=https://xxxxxxxx.execute-api.us-east-1.amazonaws.com/dev
-VITE_COGNITO_USER_POOL_ID=us-east-1_XXXXXXXXX
-VITE_COGNITO_CLIENT_ID=xxxxxxxxxxxxxxxxxxxxxxxxxx
-VITE_REGION=us-east-1
-```
-
-### SAM Configuration (`samconfig.toml`)
-
-```toml
-[default.deploy.parameters]
-stack_name = "identity-governance-dev"
-resolve_s3 = true
-region = "us-east-1"
-capabilities = "CAPABILITY_IAM CAPABILITY_NAMED_IAM"
-parameter_overrides = "Stage=dev"
-```
-
-### Template Parameters
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `Stage` | `dev` | Deployment stage (dev/staging/prod) |
-| `SesSenderEmail` | `noreply@example.com` | Verified SES sender email |
-| `RecertDeadlineDays` | `14` | Days to complete recertification |
-| `ReconciliationGraceHours` | `1` | Grace period before flagging orphans |
-| `IdentityStoreId` | (empty) | IAM Identity Center store ID |
+| Variable | Required | Purpose |
+|---|---|---|
+| `TABLE_NAME` | yes | DynamoDB single-table store |
+| `ENFORCEMENT_QUEUE_URL` | yes | SQS queue the API enqueues decisions to |
+| `EVIDENCE_BUCKET` | no | S3 Object Lock (WORM) bucket for evidence mirroring |
+| `SES_SENDER_EMAIL` | yes | Verified SES sender for owner emails |
+| `UI_BASE_URL` | yes | Base URL used in email deep links |
+| `RECERT_DEADLINE_DAYS` | no (14) | Review window |
+| `MANAGEMENT_ACCOUNT_ID` | no | Resolved from STS at runtime if unset |
+| `CROSS_ACCOUNT_ROLE_NAME` | no (`VIGILCrossAccountRole`) | Role assumed in member accounts |
 
 ---
 
-## Multi-Account Setup (StackSet)
-
-VIGIL uses a CloudFormation StackSet to deploy a cross-account IAM role (`VIGILCrossAccountRole`) to all member accounts in your AWS Organization. This role allows the management account's Lambda functions to:
-
-- **Discover** IAM users, S3 buckets, and resources in member accounts
-- **Revoke** access (disable access keys, detach policies, modify bucket policies)
-- **Audit** CloudTrail events across accounts
-
-### How It Works
-
-1. The StackSet uses `SERVICE_MANAGED` permission model (no manual role setup)
-2. Auto-deployment is enabled - new accounts automatically get the role
-3. The role trusts only the management account (`sts:AssumeRole`)
-4. Deployed to the root OU, covering all member accounts
-
-### Manual StackSet Deployment
+## Testing
 
 ```bash
-# Get your account ID
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-
-# Get root OU
-ROOT_OU_ID=$(aws organizations list-roots --query "Roots[0].Id" --output text)
-
-# Create StackSet
-aws cloudformation create-stack-set \
-  --stack-set-name VIGILCrossAccountRole \
-  --template-body file://stackset-templates/cross-account-role.yaml \
-  --parameters ParameterKey=ManagementAccountId,ParameterValue=$ACCOUNT_ID \
-  --permission-model SERVICE_MANAGED \
-  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
-  --capabilities CAPABILITY_NAMED_IAM
-
-# Deploy to all accounts
-aws cloudformation create-stack-instances \
-  --stack-set-name VIGILCrossAccountRole \
-  --deployment-targets OrganizationalUnitIds=$ROOT_OU_ID \
-  --regions us-east-1 \
-  --operation-preferences FailureTolerancePercentage=100,MaxConcurrentPercentage=100
+cd engine
+node --test tests/connectors.test.mjs
 ```
+
+Connector tests assert the production-correctness invariants: scoped revoke (no over-broad
+detach), scoped modify, full revoke, IAM role/user partials, and idempotent enforcement.
 
 ---
 
-## Login Credentials
+## Security
 
-After deployment, create an admin user:
+- The REST API requires a valid Cognito token on every request (`COGNITO_USER_POOLS`
+  authorizer). Owner identity is derived from the token, not the request body.
+- Each Lambda uses a least-privilege role scoped to the actions it performs.
+- Enforcement is **scoped**: a revoke/modify only affects the target resource. When access
+  is granted via IAM and cannot be safely narrowed in place, the engine adds a scoped
+  explicit `Deny` on the resource rather than mutating the principal's IAM policies.
+- Every decision and change is recorded in an append-only, hash-chained evidence trail;
+  enable `EVIDENCE_BUCKET` for WORM (Object Lock) retention.
+
+---
+
+## Cleanup
 
 ```bash
-# Create user
-aws cognito-idp admin-create-user \
-  --user-pool-id <POOL_ID> \
-  --username admin@yourcompany.com \
-  --user-attributes Name=email,Value=admin@yourcompany.com \
-  --temporary-password "Your Temporary Password"
-
-> ⚠️ **Security Note**: The temporary password above is a sample placeholder. In production, use a strong, unique temporary password or omit `--temporary-password` to have Cognito generate one. Users are forced to change the password on first login regardless.
-
-# Add to admin group
-aws cognito-idp admin-add-user-to-group \
-  --user-pool-id <POOL_ID> \
-  --username admin@yourcompany.com \
-  --group-name admin
+cd engine
+sam delete --stack-name recert-engine-dev
 ```
 
-### User Groups
-
-| Group | Role | Access |
-|-------|------|--------|
-| `admin` | System administrator | Full access, cycle management, system config |
-| `auditor` | Compliance auditor | Read-only audit trails, export, evidence |
-| `manager` | People manager | Recertification reviews for their reports |
-| `owner` | Resource owner | Recertification reviews for owned resources |
-| `designated_leader` | Escalation target | Receives escalated reviews |
-
----
-
-## Cost Estimate
-
-For an organization with ~1,000 identities:
-
-| Service | Monthly Cost |
-|---------|-------------|
-| Lambda (10 functions, low invocation) | ~$2 |
-| DynamoDB (on-demand, ~100K items) | ~$5 |
-| API Gateway (~50K requests/month) | ~$2 |
-| S3 (evidence + UI hosting) | ~$3 |
-| Cognito (50 admin users) | Free tier |
-| EventBridge (schedulers + events) | ~$1 |
-| SES (email notifications) | ~$1 |
-| CloudTrail (management events) | Free (1 trail) |
-| **Total** | **~$15–25/month** |
-
-Costs scale linearly. At 5,000 identities: ~$50–75/month.
-
----
-
-## Project Structure
-
-```
-|-- template.yaml              # SAM template (all infrastructure)
-|-- samconfig.toml             # SAM deployment configuration
-|-- package.json               # Backend dependencies
-|-- scripts/
-|   |-- deploy.sh              # One-command deploy
-|   |-- seed-data.mjs          # Seed test data
-|   |-- seed-real-data.mjs     # Seed production-like data
-|-- src/
-|   |-- functions/             # 10 Lambda functions
-|   |   |-- audit-writer/      # Lifecycle event capture
-|   |   |-- audit-query/       # Auditor API endpoints
-|   |   |-- evidence-archiver/ # DynamoDB Streams -> S3
-|   |   |-- activity-tracker/  # Login/activity tracking
-|   |   |-- stats-aggregator/  # Dashboard statistics
-|   |   |-- sync-reconciler/   # IdP reconciliation
-|   |   |-- recert-initiator/  # Recertification cycle start
-|   |   |-- recert-processor/  # Decision processing
-|   |   |-- recert-notifier/   # Email notifications
-|   |   |-- bulk-import-scanner/ # Backfill missing records
-|   |-- shared/                # Shared utilities
-|       |-- identity-adapters/ # Pluggable IdP adapters
-|       |-- idp-adapters/      # External IdP adapters (Okta, Entra)
-|       |-- dynamo-client.mjs
-|       |-- crypto-utils.mjs   # Hash chain utilities
-|       |-- models.mjs
-|-- stackset-templates/
-|   |-- cross-account-role.yaml  # StackSet template for member accounts
-|-- ui/                        # React 18 + Vite SPA
-|   |-- src/
-|       |-- pages/             # Dashboard, UserSearch, Recert, Admin
-|       |-- components/        # Shared UI components
-|-- tests/
-    |-- unit/                  # Node.js built-in test runner
-```
-
----
-
-## Development
-
-```bash
-# Run unit tests
-npm test
-
-# Run SAM locally
-sam local start-api
-
-# Build and deploy
-sam build --parallel && sam deploy
-
-# Seed test data
-node scripts/seed-data.mjs
-```
-
----
-
-## Compliance
-
-VIGIL implements a three-layer cryptographic evidence chain:
-
-1. **CloudTrail Digest Chain** - SHA-256 hashing with RSA signing, hourly digests
-2. **DynamoDB Append-Only Hash Chain** - Each record references the SHA-256 hash of its predecessor
-3. **S3 Object Lock (Compliance Mode)** - WORM storage, 8-year retention
-
-This satisfies:
-- **MCA Rule 11(g)** - 8-year tamper-proof audit trail
-- **BSA 2023 Section 63** - Electronic evidence admissibility
-- **DPDP Act 2023** - Purpose-based retention with statutory override
-- **CERT-In** - Incident reporting guidelines
-- **RBI Cybersecurity Framework** - For fintech contexts
-
----
-
-## Disclaimer
-
-This project is provided as a sample implementation for educational and demonstration purposes. It is not intended for production use without additional security review and hardening.
-
-**By deploying this solution, you acknowledge:**
-
-- **Cost Responsibility** — Deploying this solution will incur AWS charges (Lambda invocations, DynamoDB storage, S3 storage with Object Lock, API Gateway requests, SES emails, CloudFront distribution). You are responsible for all costs. Review [AWS Pricing](https://aws.amazon.com/pricing/) and monitor usage via AWS Cost Explorer.
-- **Shared Responsibility** — Security and compliance is a [shared responsibility](https://aws.amazon.com/compliance/shared-responsibility-model/) between AWS and you. This solution provides technical controls but does not guarantee compliance with any regulation. You are responsible for:
-  - Performing your own compliance assessment with legal counsel
-  - Configuring appropriate IAM permissions and network controls
-  - Managing Cognito user lifecycle and access reviews
-  - Validating the solution meets your organization's specific regulatory requirements
-  - Monitoring and responding to security events
-- **No Warranty** — This software is provided "as is" without warranty of any kind. The compliance mappings (MCA, BSA, DPDP, RBI) are provided as guidance only and do not constitute legal advice.
-
----
-
-## Security Considerations
-
-### IAM Permissions
-- Lambda functions use least-privilege policies scoped to specific resources where possible. Some actions (e.g., `iam:ListUsers`, `tag:GetResources`, `cloudtrail:LookupEvents`) require wildcard resource (`*`) by API design.
-- The cross-account StackSet role (`VIGILCrossAccountRole`) grants revocation permissions across member accounts. Review `stackset-templates/cross-account-role.yaml` and restrict further based on your organization's requirements.
-
-### Data Protection
-- Evidence bucket uses S3 Object Lock in Compliance mode (8-year retention). Objects cannot be deleted or overwritten during the retention period.
-- DynamoDB table uses KMS encryption and Point-in-Time Recovery.
-- All S3 buckets have public access blocked and server-side encryption enabled.
-
-### Network & API Security
-- API Gateway is protected by Cognito Authorizer — all endpoints require valid authentication.
-- CORS is configured with `AllowOrigin: '*'` for development convenience. For production, restrict this to your deployed UI domain.
-
-### Credential Management
-- No credentials are stored in source code. IdP credentials (SCIM tokens) are stored in SSM Parameter Store.
-- Cognito handles all user authentication with strong password policies (12+ characters, mixed case, numbers, symbols).
-
----
-
-## Cleanup / Teardown
-
-To remove all resources deployed by VIGIL:
-
-```bash
-# 1. Delete the StackSet instances (cross-account roles)
-aws cloudformation delete-stack-instances \
-  --stack-set-name VIGILCrossAccountRole \
-  --deployment-targets OrganizationalUnitIds=<ROOT_OU_ID> \
-  --regions us-east-1 --no-retain-stacks
-
-# 2. Delete the StackSet
-aws cloudformation delete-stack-set --stack-set-name VIGILCrossAccountRole
-
-# 3. Empty the S3 buckets (required before stack deletion)
-#    ⚠️ Evidence bucket has Object Lock — objects cannot be deleted until retention expires
-aws s3 rm s3://identity-governance-ui-dev-<ACCOUNT_ID> --recursive
-aws s3 rm s3://identity-governance-access-logs-dev-<ACCOUNT_ID> --recursive
-
-# 4. Delete the SAM stack
-sam delete --stack-name identity-governance-dev --no-prompts
-
-# 5. Delete the Cognito User Pool (if not needed)
-aws cognito-idp delete-user-pool --user-pool-id <POOL_ID>
-```
-
-> **Note**: The Evidence S3 bucket has `DeletionPolicy: Retain` and Object Lock in Compliance mode. Objects in this bucket **cannot** be deleted until their retention period (8 years) expires. Plan accordingly if you need to fully decommission.
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. If no CONTRIBUTING.md is present, contributions via pull requests are welcome. Please open an issue first to discuss significant changes.
+The DynamoDB table and (if enabled) the evidence bucket use `DeletionPolicy: Retain`. If you
+enabled the WORM evidence bucket, its objects cannot be deleted until their Object Lock
+retention period expires.
 
 ---
 
 ## License
 
-This project is licensed under the MIT-0 License.
+MIT-0. This project is provided as a sample for educational and demonstration purposes; it
+is not intended for production use without additional security review and hardening.

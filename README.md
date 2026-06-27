@@ -59,6 +59,8 @@ src/, scripts/, ...      # Legacy VIGIL platform components (audit, IdP sync, da
 
 ## Architecture
 
+![Recertification engine architecture](docs/architecture.svg)
+
 ```
                        +-------------------+
   Client UI  --REST-->  |   recert-api      |  cycles / reviews / decisions / rollback

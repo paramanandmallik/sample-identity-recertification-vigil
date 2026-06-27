@@ -80,6 +80,14 @@ const Layout = () => {
             >
               Recertification
             </NavLink>
+            {(user?.groups || []).includes('admin') && (
+              <NavLink
+                to="/admin"
+                className={({ isActive }) => `aws-navlink ${isActive ? 'aws-navlink--active' : ''}`}
+              >
+                Discovery
+              </NavLink>
+            )}
           </nav>
           <div className="aws-sidenav-footer">
             <span className="aws-sidenav-user">{userLabel}</span>

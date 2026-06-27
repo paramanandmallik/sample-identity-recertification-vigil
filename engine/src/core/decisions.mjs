@@ -7,7 +7,7 @@
 
 import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../lib/ddb.mjs';
-import { keys, ENTITY, DECISION, initialEnforcement, isValidDecision, decisionId as mkId } from './models.mjs';
+import { keys, ENTITY, ENFORCEMENT, isValidDecision, decisionId as mkId } from './models.mjs';
 import { isoString, epochMs } from '../lib/time.mjs';
 import { config } from '../lib/config.mjs';
 
@@ -77,7 +77,7 @@ export const recordDecisions = async ({ cycleId, ownerEmail, actorId, onBehalfOf
       reason: dec.reason || null,
       changes: dec.changes || null,
       accountId: review.accountId || null,
-      enforcementStatus: initialEnforcement(dec.decision),
+      enforcementStatus: ENFORCEMENT.PENDING,
       createdAt: now, createdAtEpoch: epochMs(),
     };
 

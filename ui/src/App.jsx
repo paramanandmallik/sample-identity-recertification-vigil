@@ -10,6 +10,7 @@ import ProtectedRoute from './components/ProtectedRoute.jsx';
 import Layout from './components/Layout.jsx';
 import Login from './pages/Login.jsx';
 import RecertificationReview from './pages/RecertificationReview.jsx';
+import CyclesAdmin from './pages/CyclesAdmin.jsx';
 import './App.css';
 
 /** Current fiscal-quarter cycle id, e.g. "2026-Q2". */
@@ -33,6 +34,7 @@ const App = () => (
           <Route index element={<Navigate to={`/recert/${currentCycleId()}`} replace />} />
           <Route path="recert/:cycleId" element={<RecertificationReview />} />
           <Route path="recert" element={<Navigate to={`/recert/${currentCycleId()}`} replace />} />
+          <Route path="admin" element={<CyclesAdmin />} />
         </Route>
         <Route path="*" element={<Login />} />
       </Routes>

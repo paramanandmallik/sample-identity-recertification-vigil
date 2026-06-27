@@ -134,6 +134,9 @@ export const submitDecisions = (cycleId, decisions, onBehalfOf) =>
 export const getDecisionStatus = (decisionId) =>
   apiRequest(`/decisions/${encodeURIComponent(decisionId)}`);
 
+/** List all recertification cycles with stats (engine: GET /cycles) */
+export const listCycles = () => apiRequest('/cycles');
+
 /** Request deadline extension */
 export const requestExtension = (cycleId, reason) =>
   apiRequest(`/recert/cycles/${cycleId}/extend`, {

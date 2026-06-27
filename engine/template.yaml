@@ -220,6 +220,7 @@ Resources:
               Resource: !Sub 'arn:aws:iam::*:role/${CrossAccountRoleName}'
       Events:
         CreateCycle: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /cycles, Method: POST } }
+        ListCycles: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /cycles, Method: GET } }
         GetCycle: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: '/cycles/{cycleId}', Method: GET } }
         GetReviews: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /reviews, Method: GET } }
         PostDecisions: { Type: Api, Properties: { RestApiId: !Ref RecertApi, Path: /decisions, Method: POST } }

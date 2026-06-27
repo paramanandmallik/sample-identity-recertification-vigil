@@ -35,6 +35,7 @@ export const handler = async (event) => {
   try {
     const { httpMethod, path, pathParameters } = event;
     if (httpMethod === 'POST' && path === '/cycles') return await createCycle(event);
+    if (httpMethod === 'GET' && path === '/cycles') return await listCycles();
     if (httpMethod === 'GET' && pathParameters?.cycleId) return await getCycle(pathParameters.cycleId);
     if (httpMethod === 'GET' && path === '/reviews') return await getReviews(event);
     if (httpMethod === 'POST' && path === '/decisions') return await postDecisions(event);
@@ -64,6 +65,7 @@ const createCycle = async (event) => {
     TableName: TABLE_NAME,
     Item: {
       ...keys.cycleSummary(cycleId), entityType: ENTITY.CYCLE,
+      GSI1PK: `TYPE#${ENTITY.CYCLE}`, GSI1SK: isoString(now),
       cycleId, cycleType, status: 'INITIATING',
       scope: body.scope || null,
       startDate: isoString(now), deadline: isoString(addDays(now, deadlineDays)),
@@ -84,23 +86,63 @@ const createCycle = async (event) => {
   return ok(202, { cycleId, status: 'INITIATING' });
 };
 
-const getCycle = async (cycleId) => {
-  const summary = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.cycleSummary(cycleId) }));
-  if (!summary.Item) return fail(404, `Cycle ${cycleId} not found`);
-
+const reviewItemsForCycle = async (cycleId) => {
   const r = await ddb.send(new QueryCommand({
     TableName: TABLE_NAME, IndexName: 'GSI1',
     KeyConditionExpression: 'GSI1PK = :pk AND begins_with(GSI1SK, :sk)',
     ExpressionAttributeValues: { ':pk': `TYPE#${ENTITY.REVIEW_ITEM}`, ':sk': cycleId },
   }));
+  return r.Items || [];
+};
+
+const tally = (items) => {
+  const t = { total: items.length, pending: 0, certified: 0, revoked: 0, modified: 0 };
+  for (const i of items) {
+    if (i.status === REVIEW.PENDING) t.pending++;
+    else if (i.status === REVIEW.CERTIFIED) t.certified++;
+    else if (i.status === REVIEW.REVOKED) t.revoked++;
+    else if (i.status === REVIEW.MODIFIED || i.status === REVIEW.PARTIAL) t.modified++;
+  }
+  return t;
+};
+
+const completionPct = (t) => (t.total ? Math.round(((t.total - t.pending) / t.total) * 100) : 0);
+
+const listCycles = async () => {
+  const r = await ddb.send(new QueryCommand({
+    TableName: TABLE_NAME, IndexName: 'GSI1',
+    KeyConditionExpression: 'GSI1PK = :pk',
+    ExpressionAttributeValues: { ':pk': `TYPE#${ENTITY.CYCLE}` },
+    ScanIndexForward: false,
+  }));
+  const cycles = [];
+  for (const c of r.Items || []) {
+    const stats = tally(await reviewItemsForCycle(c.cycleId));
+    cycles.push({
+      cycleId: c.cycleId, cycleType: c.cycleType, status: c.status,
+      startDate: c.startDate, deadline: c.deadline,
+      totalResources: c.totalResources ?? stats.total, totalOwners: c.totalOwners ?? 0,
+      resourcesByService: c.resourcesByService || {},
+      stats, completionPct: completionPct(stats),
+    });
+  }
+  return ok(200, { cycles });
+};
+
+const getCycle = async (cycleId) => {
+  const summary = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.cycleSummary(cycleId) }));
+  if (!summary.Item) return fail(404, `Cycle ${cycleId} not found`);
+
+  const items = await reviewItemsForCycle(cycleId);
   const byOwner = {};
-  for (const it of r.Items || []) {
+  for (const it of items) {
     const k = it.ownerEmail || 'unknown';
     byOwner[k] = byOwner[k] || { ownerEmail: k, total: 0, pending: 0, decided: 0 };
     byOwner[k].total++;
     if (it.status === REVIEW.PENDING) byOwner[k].pending++; else byOwner[k].decided++;
   }
-  return ok(200, { cycle: summary.Item, ownerProgress: Object.values(byOwner) });
+  const stats = tally(items);
+  return ok(200, { cycle: summary.Item, stats, completionPct: completionPct(stats), ownerProgress: Object.values(byOwner) });
 };
 
 const getReviews = async (event) => {

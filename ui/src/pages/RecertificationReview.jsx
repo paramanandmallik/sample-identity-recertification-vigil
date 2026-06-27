@@ -306,7 +306,7 @@ const ResourceList = ({ items, decisions, onDecision, selected, onSelect, onRevo
         return (
           <div key={key}>
             <div className="resource-row" title={item.resourceArn || item.arn}>
-              {!readOnly && <input type="checkbox" className="resource-checkbox" checked={selected.has(key)} onChange={() => onSelect(key)} disabled={!isPending || hasAccessEntries} title={hasAccessEntries ? 'Decisions for this resource are made per-principal — expand the row (▸) to certify/revoke each principal' : (!isPending ? 'Already decided' : 'Select for bulk certify')} />}
+              {!readOnly && <input type="checkbox" className="resource-checkbox" checked={selected.has(key)} onChange={() => onSelect(key)} disabled={!isPending} title={!isPending ? 'Already decided' : (hasAccessEntries ? 'Select to certify the whole resource, or expand (▸) to decide per principal' : 'Select for bulk certify')} />}
               {hasExpandable ? (
                 <button className="expand-toggle" onClick={() => toggleExpand(key)} title="Toggle access details">
                   {isExpanded ? 'v' : '>'}
@@ -646,8 +646,10 @@ const plainReason = (d) => (typeof d.reason === 'string' && !d.reason.startsWith
 const buildDecisionBatch = (reviews, decisions, resourceKey, principalDecisions = {}) => {
   const batch = [];
 
-  // Resource-level decisions (items without accessEntries)
+  // Resource-level decisions (items without accessEntries, or whole-resource certify)
   for (const [key, d] of Object.entries(decisions)) {
+    // If the owner also made per-principal decisions for this resource, those take precedence.
+    if (principalDecisions[key] && Object.keys(principalDecisions[key]).length > 0) continue;
     batch.push({ resourceArn: key, reason: plainReason(d), ...toEngineVerb(d) });
   }
 

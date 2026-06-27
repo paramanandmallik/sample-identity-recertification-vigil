@@ -2,7 +2,7 @@
 
 Documentation index for the VIGIL access recertification engine.
 
-![Recertification engine architecture](architecture.svg)
+![Recertification engine architecture](architecture.png)
 
 ## Start here
 
@@ -24,8 +24,7 @@ Documentation index for the VIGIL access recertification engine.
 - **On-call / operator** → [Runbook](../RUNBOOK.md) and
   [Operations](../engine/DEVELOPER_GUIDE.md#operations).
 
-## Diagram source
+## Diagram
 
-The architecture diagram is maintained as vector source at
-[`architecture.svg`](architecture.svg). Edit the SVG directly to keep it in sync with the
-system.
+The architecture diagram is [`architecture.png`](architecture.png) (1600×1000). Update it if
+the system changes.

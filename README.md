@@ -59,7 +59,7 @@ src/, scripts/, ...      # Legacy VIGIL platform components (audit, IdP sync, da
 
 ## Architecture
 
-![Recertification engine architecture](docs/architecture.svg)
+![Recertification engine architecture](docs/architecture.png)
 
 ```
                        +-------------------+

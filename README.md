@@ -1,5 +1,11 @@
 # VIGIL: Access Recertification Engine
 
+![License: MIT-0](https://img.shields.io/badge/License-MIT--0-blue)
+![AWS](https://img.shields.io/badge/AWS-Serverless-FF9900?logo=amazonaws&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-24.x-339933?logo=node.js&logoColor=white)
+![IaC: AWS SAM](https://img.shields.io/badge/IaC-AWS%20SAM-232F3E)
+![Tests](https://img.shields.io/badge/tests-12%2F12%20passing-success)
+
 VIGIL is a standalone, production-grade **access recertification engine** for AWS. It
 discovers resources by their `owner` tag, raises review requests to the owners, accepts
 owner decisions (**certify / modify / revoke**), and then **durably enforces the resulting
@@ -12,6 +18,20 @@ React UI for owners and admins.
 
 > Looking for implementation details, the API reference, or how to extend the engine to
 > new resource types? See the **[Developer Guide](engine/DEVELOPER_GUIDE.md)**.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Repository layout](#repository-layout)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [The UI](#the-ui)
+- [Configuration](#configuration)
+- [Testing](#testing)
+- [Security](#security)
+- [Cleanup](#cleanup)
+- [License](#license)
 
 ---
 

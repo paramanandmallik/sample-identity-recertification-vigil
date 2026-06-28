@@ -79,40 +79,6 @@ export const apiRequest = async (path, options = {}) => {
   return response.json();
 };
 
-// Convenience methods 
-
-/** Dashboard summary */
-export const getDashboardSummary = () =>
-  apiRequest('/dashboard/summary');
-
-/** Dashboard event timeline */
-export const getDashboardTimeline = (period = '30d', groupBy = 'day') =>
-  apiRequest('/dashboard/events/timeline', { params: { period, groupBy } });
-
-/** Dashboard user distribution */
-export const getDashboardDistribution = () =>
-  apiRequest('/dashboard/users/distribution');
-
-/** Search users */
-export const searchUsers = (q, { source, status, limit, lastKey } = {}) =>
-  apiRequest('/search/users', { params: { q, source, status, limit, lastKey } });
-
-/** User detail */
-export const getUserDetail = (userId) =>
-  apiRequest(`/users/${userId}/detail`);
-
-/** User timeline */
-export const getUserTimeline = (userId, { limit, lastKey, order } = {}) =>
-  apiRequest(`/audit/users/${userId}/timeline`, { params: { limit, lastKey, order } });
-
-/** Deletion proof */
-export const getDeletionProof = (userId) =>
-  apiRequest(`/audit/users/${userId}/deletion-proof`);
-
-/** Export audit data */
-export const exportAudit = (startDate, endDate, format = 'csv') =>
-  apiRequest('/audit/export', { params: { startDate, endDate, format } });
-
 // Recertification API 
 
 /** Get current owner's pending reviews (engine: GET /reviews) */
@@ -144,13 +110,6 @@ export const requestExtension = (cycleId, reason) =>
     body: { reason },
   });
 
-/** Transfer reviews to new owner */
-export const transferReviews = (cycleId, oldOwnerEmail, newOwnerEmail) =>
-  apiRequest(`/recert/cycles/${cycleId}/transfer`, {
-    method: 'POST',
-    body: { oldOwnerEmail, newOwnerEmail },
-  });
-
 /** Trigger manual/ad-hoc cycle (engine: POST /cycles) */
 export const triggerCycle = (cycleType, scope, deadlineDays) =>
   apiRequest('/cycles', {
@@ -158,47 +117,8 @@ export const triggerCycle = (cycleType, scope, deadlineDays) =>
     body: { cycleType, scope, deadlineDays },
   });
 
-/** Get user recertification history */
-export const getUserRecertHistory = (userId) =>
-  apiRequest(`/recert/users/${userId}/history`);
-
-/** Get recert dashboard summary */
-export const getRecertSummary = () =>
-  apiRequest('/dashboard/recert/summary');
-
-// Admin API 
-
-/** Get unowned resources */
-export const getUnownedResources = () =>
-  apiRequest('/admin/unowned');
-
-/** Get all override assignments */
-export const getOverrides = () =>
-  apiRequest('/admin/overrides');
-
-/** Create override assignment */
-export const createOverride = (ownerEmail, resources) =>
-  apiRequest('/admin/overrides', {
-    method: 'POST',
-    body: { ownerEmail, resources },
-  });
-
-/** Delete override assignment */
-export const deleteOverride = (ownerEmail, userId) =>
-  apiRequest(`/admin/overrides/${encodeURIComponent(ownerEmail)}/resources/${encodeURIComponent(userId)}`, {
-    method: 'DELETE',
-  });
-
 // Multi-Account Governance API 
 
 /** Get all discovered accounts from Account Registry */
 export const getAccounts = () =>
   apiRequest('/admin/accounts');
-
-/** Trigger account discovery sync from AWS Organizations */
-export const syncAccounts = () =>
-  apiRequest('/admin/accounts/sync', { method: 'POST' });
-
-/** Trigger on-demand resource scan for a specific account */
-export const scanAccount = (accountId) =>
-  apiRequest(`/admin/accounts/${encodeURIComponent(accountId)}/scan`, { method: 'POST' });

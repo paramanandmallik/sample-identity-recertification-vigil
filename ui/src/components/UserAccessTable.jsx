@@ -146,23 +146,31 @@ const UserAccessTable = ({ accessEntries = [], onDecisionsChange, onImmediate, d
       {/* Summary Bar */}
       <div className="uat-summary-bar">
         <span className="uat-summary-text">
-          {decidedCount} of {totalCount} principals decided
-          {decidedCount > 0 && (
-            <span className="uat-summary-breakdown">
-              {certifiedCount > 0 && <span className="uat-summary-certified"> ({certifiedCount} certified</span>}
-              {revokedCount > 0 && <span className="uat-summary-revoked">, {revokedCount} revoked</span>}
-              {modifiedCount > 0 && <span className="uat-summary-modified">, {modifiedCount} modified</span>}
-              {certifiedCount > 0 && <span>)</span>}
-            </span>
+          {disabled && decidedCount === 0 ? (
+            'Resource already decided'
+          ) : (
+            <>
+              {decidedCount} of {totalCount} principals decided
+              {decidedCount > 0 && (
+                <span className="uat-summary-breakdown">
+                  {certifiedCount > 0 && <span className="uat-summary-certified"> ({certifiedCount} certified</span>}
+                  {revokedCount > 0 && <span className="uat-summary-revoked">, {revokedCount} revoked</span>}
+                  {modifiedCount > 0 && <span className="uat-summary-modified">, {modifiedCount} modified</span>}
+                  {certifiedCount > 0 && <span>)</span>}
+                </span>
+              )}
+            </>
           )}
         </span>
-        <button
-          className="uat-bulk-certify-btn"
-          onClick={handleBulkCertify}
-          disabled={disabled || decidedCount >= totalCount}
-        >
-          Certify All
-        </button>
+        {!disabled && (
+          <button
+            className="uat-bulk-certify-btn"
+            onClick={handleBulkCertify}
+            disabled={decidedCount >= totalCount}
+          >
+            Certify All
+          </button>
+        )}
       </div>
 
       {/* Sort Controls */}

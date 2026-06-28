@@ -45,6 +45,54 @@ const updateReviewStatus = async (client, d, status) => {
   }
 };
 
+/**
+ * Recompute a review item's accessEntries to reflect an applied revoke/modify, so the
+ * UI shows the true post-enforcement access rather than the discovery-time snapshot.
+ * - REVOKE (per-principal): drop that principal's entry.
+ * - REVOKE (resource-level): drop all entries.
+ * - MODIFY (per-principal + removeActions): remove those actions from the principal's permissions.
+ */
+const pruneAccessEntries = (entries, d) => {
+  if (!Array.isArray(entries)) return entries;
+  if (d.decision === DECISION.REVOKE) {
+    return d.principalArn ? entries.filter((e) => e.principalArn !== d.principalArn) : [];
+  }
+  if (d.decision === DECISION.MODIFY && d.principalArn) {
+    const remove = new Set((d.changes && d.changes.removeActions) || []);
+    if (remove.size) {
+      return entries.map((e) => (e.principalArn === d.principalArn
+        ? { ...e, permissions: (e.permissions || []).filter((p) => !remove.has(p)) }
+        : e));
+    }
+  }
+  return entries;
+};
+
+/** Set review status and, for enforced revoke/modify, prune accessEntries to match. */
+const finalizeReview = async (client, d, status) => {
+  if (!d.ownerEmail || !d.cycleId) return;
+  const key = keys.reviewItem(d.ownerEmail, d.cycleId, d.resourceArn);
+  try {
+    const sets = ['#st = :st', 'lastDecisionAt = :ts'];
+    const vals = { ':st': status, ':ts': isoString() };
+    if (d.decision === DECISION.REVOKE || d.decision === DECISION.MODIFY) {
+      const { Item } = await client.send(new GetCommand({ TableName: TABLE_NAME, Key: key }));
+      if (Item && Array.isArray(Item.accessEntries)) {
+        vals[':ae'] = pruneAccessEntries(Item.accessEntries, d);
+        sets.push('accessEntries = :ae');
+      }
+    }
+    await client.send(new UpdateCommand({
+      TableName: TABLE_NAME, Key: key,
+      UpdateExpression: `SET ${sets.join(', ')}`,
+      ExpressionAttributeNames: { '#st': 'status' },
+      ExpressionAttributeValues: vals,
+    }));
+  } catch (e) {
+    log('error', 'REVIEW_STATUS_UPDATE_FAILED', { resourceArn: d.resourceArn, message: e.message });
+  }
+};
+
 const raiseTicket = async (client, d, reason) => {
   const ts = isoString();
   await client.send(new PutCommand({
@@ -114,7 +162,7 @@ export const enforceDecision = async (decisionId, deps = {}) => {
       fields: { decisionId, cycleId: d.cycleId, decision: d.decision, principalArn: d.principalArn || null, actions: result.actions, applied: result.applied },
     }, { ddb: client });
     await setDecisionStatus(client, decisionId, ENFORCEMENT.ENFORCED, { enforcedAt: isoString(), actions: result.actions, applied: result.applied });
-    await updateReviewStatus(client, d, reviewStatusFor(d.decision));
+    await finalizeReview(client, d, reviewStatusFor(d.decision));
     return { status: ENFORCEMENT.ENFORCED, actions: result.actions, applied: result.applied };
   } catch (err) {
     if (err instanceof TicketRequiredError) {

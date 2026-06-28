@@ -3,12 +3,15 @@
 Generate the VIGIL Recertification Engine architecture diagram using the
 mingrammer `diagrams` library (authentic AWS service icons, rendered via Graphviz).
 
-Output: docs/architecture.png  (overwrites the hand-built PNG)
+The AWS-managed components are wrapped in an "AWS Cloud" group (blue border);
+the client application sits outside it.
+
+Output: docs/architecture.png
 
 Run:  python3 docs/generate_architecture.py
 """
 from diagrams import Diagram, Cluster, Edge
-from diagrams.aws.compute import Lambda
+from diagrams.aws.compute import Lambda, EC2
 from diagrams.aws.integration import SQS
 from diagrams.aws.engagement import SimpleEmailServiceSes as SES
 from diagrams.aws.database import Dynamodb
@@ -17,7 +20,8 @@ from diagrams.aws.security import Cognito, IAM
 from diagrams.aws.network import APIGateway
 from diagrams.aws.management import Cloudwatch
 from diagrams.aws.general import Users, General
-from diagrams.aws.compute import EC2
+
+AWS_BLUE = "#147EBA"
 
 GRAPH_ATTR = {
     "fontsize": "20",
@@ -31,6 +35,21 @@ GRAPH_ATTR = {
     "bgcolor": "white",
 }
 
+# "AWS Cloud" enclosure: blue rounded border, label top-left with the cloud tint.
+AWS_CLOUD_ATTR = {
+    "label": "AWS Cloud",
+    "labelloc": "t",
+    "labeljust": "l",
+    "fontsize": "18",
+    "fontcolor": AWS_BLUE,
+    "pencolor": AWS_BLUE,
+    "color": AWS_BLUE,
+    "penwidth": "2.5",
+    "style": "rounded",
+    "bgcolor": "white",
+    "margin": "26",
+}
+
 with Diagram(
     "",
     filename="docs/architecture",
@@ -39,40 +58,43 @@ with Diagram(
     direction="LR",
     graph_attr=GRAPH_ATTR,
 ):
+    # Client app is outside the AWS Cloud boundary.
     client = Users("Client UI / your app\n(Cognito ID token)")
 
-    with Cluster("Auth"):
-        cognito = Cognito("Cognito\nuser pool")
+    with Cluster("AWS Cloud", graph_attr=AWS_CLOUD_ATTR):
 
-    with Cluster("API"):
-        api_gw = APIGateway("API Gateway\n(REST, Cognito authz)")
-        api_fn = Lambda("recert-api")
+        with Cluster("Auth"):
+            cognito = Cognito("Cognito\nuser pool")
 
-    with Cluster("Discovery & Notify"):
-        discovery = Lambda("recert-discovery\n(owner-tag scan)")
-        tagging = General("Resource Groups\nTagging API")
-        notifier = Lambda("recert-notifier")
-        ses = SES("Amazon SES\n(owner emails)")
+        with Cluster("API"):
+            api_gw = APIGateway("API Gateway\n(REST, Cognito authz)")
+            api_fn = Lambda("recert-api")
 
-    with Cluster("Durable enforcement"):
-        queue = SQS("Enforcement queue\n(idempotent)")
-        dlq = SQS("DLQ")
-        alarm = Cloudwatch("CloudWatch alarm")
-        enforcer = Lambda("recert-enforcer\nsnapshot -> apply -> verify")
+        with Cluster("Discovery & Notify"):
+            discovery = Lambda("recert-discovery\n(owner-tag scan)")
+            tagging = General("Resource Groups\nTagging API")
+            notifier = Lambda("recert-notifier")
+            ses = SES("Amazon SES\n(owner emails)")
 
-    with Cluster("Resource connectors (scoped)"):
-        c_s3 = S3("s3:bucket")
-        c_iam = IAM("iam:user / role")
-        c_ec2 = EC2("ec2:instance")
-        # invisible edges force a horizontal row instead of a vertical stack
-        c_s3 >> Edge(style="invis") >> c_iam >> Edge(style="invis") >> c_ec2
-        targets = [c_s3, c_iam, c_ec2]
+        with Cluster("Durable enforcement"):
+            queue = SQS("Enforcement queue\n(idempotent)")
+            dlq = SQS("DLQ")
+            alarm = Cloudwatch("CloudWatch alarm")
+            enforcer = Lambda("recert-enforcer\nsnapshot -> apply -> verify")
 
-    with Cluster("State & evidence"):
-        table = Dynamodb("DynamoDB single table\ncycles / reviews / decisions\nsnapshots / hash-chained evidence")
-        evidence = S3("Evidence S3\n(Object Lock / WORM, optional)")
-        # invisible edge keeps the two side by side
-        table >> Edge(style="invis") >> evidence
+        with Cluster("Resource connectors (scoped)"):
+            c_s3 = S3("s3:bucket")
+            c_iam = IAM("iam:user / role")
+            c_ec2 = EC2("ec2:instance")
+            # invisible edges force a horizontal row instead of a vertical stack
+            c_s3 >> Edge(style="invis") >> c_iam >> Edge(style="invis") >> c_ec2
+            targets = [c_s3, c_iam, c_ec2]
+
+        with Cluster("State & evidence"):
+            table = Dynamodb("DynamoDB single table\ncycles / reviews / decisions\nsnapshots / hash-chained evidence")
+            evidence = S3("Evidence S3\n(Object Lock / WORM, optional)")
+            # invisible edge keeps the two side by side
+            table >> Edge(style="invis") >> evidence
 
     # Request path
     client >> Edge(label="REST + JWT") >> api_gw >> api_fn
@@ -96,15 +118,3 @@ with Diagram(
     api_fn >> Edge(style="dashed") >> table
     enforcer >> Edge(label="status + evidence") >> table
     enforcer >> Edge(style="dashed", label="WORM mirror") >> evidence
-
-# Post-process: add a solid black border around the rendered diagram.
-from PIL import Image, ImageOps  # noqa: E402
-
-_BORDER_PX = 12
-_img = Image.open("docs/architecture.png").convert("RGBA")
-# flatten any transparency onto white so the border sits on a clean canvas
-_bg = Image.new("RGBA", _img.size, (255, 255, 255, 255))
-_img = Image.alpha_composite(_bg, _img).convert("RGB")
-_img = ImageOps.expand(_img, border=_BORDER_PX, fill="black")
-_img.save("docs/architecture.png")
-print(f"Added {_BORDER_PX}px black border -> docs/architecture.png ({_img.size[0]}x{_img.size[1]})")

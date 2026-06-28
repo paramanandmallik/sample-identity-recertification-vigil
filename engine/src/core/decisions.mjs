@@ -81,18 +81,19 @@ export const recordDecisions = async ({ cycleId, ownerEmail, actorId, onBehalfOf
       createdAt: now, createdAtEpoch: epochMs(),
     };
 
-    try {
-      await client.send(new PutCommand({ TableName: TABLE_NAME, Item: item, ConditionExpression: 'attribute_not_exists(PK)' }));
-    } catch (e) {
-      if (e.name === 'ConditionalCheckFailedException') {
-        results.push({ resourceArn, principalArn, decisionId: id, status: 'DUPLICATE', error: 'decision already recorded for this resource/principal/cycle' });
-        continue;
-      }
-      throw e;
-    }
+    // Supersede semantics: a new decision for the same resource/principal/cycle
+    // overwrites the prior one and re-runs enforcement. This lets an owner change
+    // their mind (e.g. certify -> revoke) and prevents a stale terminal decision
+    // from dead-ending future decisions. The PutCommand resets enforcementStatus
+    // to PENDING, so the enforcer's idempotency guard will process it again.
+    const { Item: prior } = await client.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.decision(id) }));
+    await client.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
 
     await enqueue(id, deps);
-    results.push({ resourceArn, principalArn, decisionId: id, decision: dec.decision, status: 'QUEUED' });
+    results.push({
+      resourceArn, principalArn, decisionId: id, decision: dec.decision,
+      status: prior ? 'RESUBMITTED' : 'QUEUED',
+    });
   }
 
   return { results };

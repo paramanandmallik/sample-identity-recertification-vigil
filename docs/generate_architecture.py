@@ -96,3 +96,15 @@ with Diagram(
     api_fn >> Edge(style="dashed") >> table
     enforcer >> Edge(label="status + evidence") >> table
     enforcer >> Edge(style="dashed", label="WORM mirror") >> evidence
+
+# Post-process: add a solid black border around the rendered diagram.
+from PIL import Image, ImageOps  # noqa: E402
+
+_BORDER_PX = 12
+_img = Image.open("docs/architecture.png").convert("RGBA")
+# flatten any transparency onto white so the border sits on a clean canvas
+_bg = Image.new("RGBA", _img.size, (255, 255, 255, 255))
+_img = Image.alpha_composite(_bg, _img).convert("RGB")
+_img = ImageOps.expand(_img, border=_BORDER_PX, fill="black")
+_img.save("docs/architecture.png")
+print(f"Added {_BORDER_PX}px black border -> docs/architecture.png ({_img.size[0]}x{_img.size[1]})")
